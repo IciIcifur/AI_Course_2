@@ -1,0 +1,16 @@
+[project]
+name = "network-traffic-analysis"
+version = "0.1.0"
+description = "Labs for HSE course: Network Traffic Analysis"
+requires-python = ">=3.10"
+
+dependencies = [
+    "numpy",
+    "pandas",
+]
+
+[tool.black]
+line-length = 88
+
+[tool.isort]
+profile = "black"

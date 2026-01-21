@@ -1,0 +1,4 @@
+/.venv
+/network_traffic_analysis.egg-info/
+/data/input/**.csv
+/data/output/**.csv
