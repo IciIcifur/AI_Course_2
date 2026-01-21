@@ -8,6 +8,8 @@ class CSVLoader(Handler):
         self.path = path
 
     def process(self, context: dict) -> dict:
+        print('\nLOADING DATA...')
         df = pd.read_csv(self.path, index_col=0)
         context["df"] = df
+        print('Done')
         return context

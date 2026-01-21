@@ -3,6 +3,8 @@ from .base import Handler
 
 class DataCleaningHandler(Handler):
     def process(self, context: dict) -> dict:
+        print('\nCLEANSING DATA...')
+
         df = context["df"]
 
         df = df.replace("\ufeff", "", regex=True)
@@ -11,4 +13,5 @@ class DataCleaningHandler(Handler):
         df = df.drop_duplicates()
 
         context["df"] = df
+        print('Done')
         return context

@@ -7,9 +7,11 @@ class SplitTargetHandler(Handler):
         self.target_column = target_column
 
     def process(self, context: dict) -> dict:
+        print('\nSPLITTING X AND Y...')
         df = context["df"]
 
         context["y"] = df[self.target_column].values
         context["X"] = df.drop(columns=[self.target_column]).values
 
+        print('Done')
         return context
