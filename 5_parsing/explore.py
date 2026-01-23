@@ -1,6 +1,5 @@
+from collections import Counter
 from pathlib import Path
-import re
-from typing import Tuple
 
 import numpy as np
 import pandas as pd
@@ -10,15 +9,13 @@ import pandas as pd
 
 def parse_sex_age(series: pd.Series) -> tuple[pd.Series, pd.Series]:
     """
-    'Мужчина ,  42 года , родился 6 октября 1976' -> ('Мужчина', 42)
+    'Мужчина ,  42 года , родился 6 октября 1976' -> ('Мужчина', 42)
     """
     s = series.astype(str)
 
-    # пол
     sex = s.str.extract(r"^(Мужчина|Женщина)", expand=False)
 
     s_lower = s.str.lower()
-
     age_str = s_lower.str.extract(r"(\d+)\s*(?:год|года|лет)", expand=False)
     age = pd.to_numeric(age_str, errors="coerce")
 
@@ -27,8 +24,7 @@ def parse_sex_age(series: pd.Series) -> tuple[pd.Series, pd.Series]:
 
 def parse_salary(series: pd.Series) -> pd.Series:
     """
-    '27 000 руб.' -> 27000
-    Убираем пробелы и неразрывные пробелы, оставляем только цифры.
+    '27 000 руб.' -> (27000, todo: currency)
     """
     cleaned = (
         series.astype(str)
@@ -42,19 +38,37 @@ def parse_salary(series: pd.Series) -> pd.Series:
 def parse_city_mobility(series: pd.Series) -> tuple[pd.Series, pd.Series, pd.Series]:
     """
     'Липецк , не готов к переезду , не готов к командировкам'
-    -> ('Липецк', 0, 0)
+    -> ('Липецк', 0/1, business_trips_level)
+
+    business_trips_level ∈ {'none', 'rare', 'regular', 'unknown'}.
     """
     s = series.astype(str)
+    s_lower = s.str.lower()
 
     city = s.str.split(",", n=1).str[0].str.strip()
 
-    reloc = s.str.contains("готов к переезду", case=False, na=False) & \
-            ~s.str.contains("не готов к переезду", case=False, na=False)
+    reloc_ready = s_lower.str.contains("готов к переезду", na=False) | s_lower.str.contains("готова к переезду",
+                                                                                            na=False)
+    reloc_not_ready = s_lower.str.contains("не готов к переезду", na=False) | s_lower.str.contains(
+        "не готова к переезду", na=False)
+    reloc = reloc_ready & ~reloc_not_ready
 
-    trips = s.str.contains("готов к командировкам", case=False, na=False) & \
-            ~s.str.contains("не готов к командировкам", case=False, na=False)
+    has_trips = s_lower.str.contains("командиров", na=False)
+    has_not = s_lower.str.contains("не", na=False)
+    has_rare = s_lower.str.contains("редк", na=False) # todo: doesn t work
 
-    return city, reloc.astype(int), trips.astype(int)
+    cond_none = has_not
+    cond_rare = has_rare & ~has_not
+    cond_regular = has_trips & ~cond_none & ~cond_rare
+
+    trips_level = np.select(
+        [cond_none, cond_rare, cond_regular],
+        ["none", "rare", "regular"],
+        default="unknown",
+    )
+    trips_level = pd.Series(trips_level, index=series.index, dtype="string")
+
+    return city, reloc.astype(int), trips_level
 
 
 def parse_experience_years(series: pd.Series) -> pd.Series:
@@ -71,15 +85,15 @@ def parse_experience_years(series: pd.Series) -> pd.Series:
     months_num = pd.to_numeric(months, errors="coerce").fillna(0)
 
     total_years = years_num + months_num / 12.0
-    # если не нашли ни лет, ни месяцев — ставим NaN
     total_years = total_years.replace(0, np.nan)
     return total_years
 
 
 def parse_education_level(series: pd.Series) -> pd.Series:
     """
-    Из 'Образование и ВУЗ' выдираем уровень образования.
-    Н��рмализуем в небольшой словарь категорий.
+    Из 'Образование и ВУЗ' выбираем уровень образования.
+    Нормализуем в небольшой словарь категорий.
+    todo: education_level, education_degree
     """
     s = series.astype(str).str.lower()
 
@@ -111,6 +125,80 @@ def parse_has_car(series: pd.Series) -> pd.Series:
     return has_car.astype(int)
 
 
+# ---------- Нормализация графика ----------
+
+def normalize_schedule_token(token: str) -> str:
+    """
+    Приводим различные варианты графика к фиксированным категориям:
+    fullday, flexible, remote, shifts, rotation, other.
+    """
+    t = token.strip().lower()
+    if t in ("полный день", "full day"):
+        return "fullday"
+    if t in ("гибкий график", "flexible schedule"):
+        return "flexible"
+    if t in ("удаленная работа", "remote working"):
+        return "remote"
+    if t in ("сменный график", "shift schedule"):
+        return "shifts"
+    if t in ("вахтовый метод", "rotation based work"):
+        return "rotation"
+    return "other"
+
+
+def parse_schedule(series: pd.Series) -> pd.Series:
+    """
+    'удаленная работа, полный день, вахтовый метод' ->
+    категориальный признак, в котором мы храним
+    МНОЖЕСТВО нормализованных токенов как строку, например:
+      'fullday|remote|rotation'
+    Чтобы по-прежнему иметь один столбец; в пайплайне
+    можно будет развернуть это в multi-hot.
+    """
+    s = series.fillna("").astype(str)
+    normed_values = []
+
+    for value in s:
+        parts = [p for p in value.split(",") if p.strip()]
+        normed = [normalize_schedule_token(p) for p in parts]
+        normed_set = sorted(set(normed))
+        normed_values.append("|".join(normed_set) if normed_set else "")
+
+    return pd.Series(normed_values, index=series.index, dtype="string")
+
+
+# ---------- Анализ многозначных (через запятую) колонок ----------
+
+def inspect_multivalue_column(series: pd.Series, name: str | None = None) -> None:
+    """
+    Разбивает значения по запятым, триммит пробелы, считает частоты токенов.
+    Печатает все токены.
+    """
+    s = series.dropna().astype(str)
+    tokens: Counter[str] = Counter()
+
+    for value in s:
+        parts = [p.strip() for p in value.split(",") if p.strip()]
+        tokens.update(parts)
+
+    print("\n=== MULTIVALUE ANALYSIS:", name or series.name, "===")
+    for token, cnt in tokens.most_common():
+        print(f"{token!r}: {cnt}")
+
+
+# ---------- Анализ должностей ----------
+
+def inspect_positions(series: pd.Series) -> None:
+    """
+    Выводит ВСЕ уникальные должности в lower/strip с их частотами.
+    """
+    s = series.fillna("").astype(str).str.lower().str.strip()
+    counter = Counter(s)
+    print("\n=== ALL POSITIONS (lowercased) ===")
+    for value, cnt in counter.most_common():
+        print(f"{value!r}: {cnt}")
+
+
 # ---------- Главная функция аналитики ----------
 
 def main() -> None:
@@ -120,45 +208,21 @@ def main() -> None:
 
     df = pd.read_csv(csv_path)
 
-    print("=== head(10) ===")
+
     pd.set_option("display.max_colwidth", 324)
     pd.set_option("display.max_columns", None)
 
-    print(df.iloc[:, 1:].head(10))
-
-    '''
-    print("\n=== columns ===")
-    print(df.columns.tolist())
-
-    print("\n=== dtypes ===")
-    print(df.dtypes)
-    
-
-    # Немного подробностей по текстовым колонкам
-    text_cols = df.select_dtypes(include=["object", "string"]).columns.tolist()
-    print("\n=== text columns sample ===")
-    print(text_cols)
-
-    sample_cols = text_cols[:5]
-    for col in sample_cols:
-        print(f"\n--- Column: {col} ---")
-        print("Sample value:")
-        print(df[col].iloc[0])
-        print(f"nunique: {df[col].nunique(dropna=True)}")
-
-    '''
     # ---------- Распарсим ключевые признаки ----------
 
     print("\n=== PARSED FEATURES PREVIEW ===")
 
     sex, age = parse_sex_age(df["Пол, возраст"])
     salary = parse_salary(df["ЗП"])
-    city, reloc, trips = parse_city_mobility(df["Город"])
+    city, reloc, trips_level = parse_city_mobility(df["Город"])
     exp_years = parse_experience_years(df["Опыт (двойное нажатие для полной версии)"])
     edu_level = parse_education_level(df["Образование и ВУЗ"])
     has_car = parse_has_car(df["Авто"])
-
-    pd.set_option("display.max_colwidth", None)
+    schedule_norm = parse_schedule(df["График"])
 
     parsed_df = pd.DataFrame(
         {
@@ -167,19 +231,21 @@ def main() -> None:
             "salary": salary,
             "city": city,
             "relocation": reloc,
-            "business_trips": trips,
+            "business_trips_level": trips_level,
             "experience_years": exp_years,
             "education_level": edu_level,
             "has_car": has_car,
+            "schedule_normalized": schedule_norm,
             "raw_position": df["Ищет работу на должность:"],
             "raw_last_position": df["Последеняя/нынешняя должность"],
-            "raw_last_work": df["Последенее/нынешнее место работы"],
+            "last_work": df["Последенее/нынешнее место работы"],
         }
     )
 
     print(parsed_df.head(10))
-    print("\nDtypes of parsed features:")
-    print(parsed_df.dtypes)
+
+    # ---------- Анализ multi-value колонок и всех должностей ----------
+    inspect_positions(df["Ищет работу на должность:"])
 
 
 if __name__ == "__main__":
