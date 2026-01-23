@@ -1,4 +1,3 @@
-from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -37,38 +36,74 @@ def parse_salary(series: pd.Series) -> pd.Series:
 
 def parse_city_mobility(series: pd.Series) -> tuple[pd.Series, pd.Series, pd.Series]:
     """
-    'Липецк , не готов к переезду , не готов к командировкам'
-    -> ('Липецк', 0/1, business_trips_level)
+    'Липецк , не готов к переезду , готов к редким командировкам'
+    -> ('Липецк', reloc, business_trips_level)
 
     business_trips_level ∈ {'none', 'rare', 'regular', 'unknown'}.
     """
     s = series.astype(str)
-    s_lower = s.str.lower()
 
-    city = s.str.split(",", n=1).str[0].str.strip()
+    cities: list[str] = []
+    reloc_flags: list[int] = []
+    trips_levels: list[str] = []
 
-    reloc_ready = s_lower.str.contains("готов к переезду", na=False) | s_lower.str.contains("готова к переезду",
-                                                                                            na=False)
-    reloc_not_ready = s_lower.str.contains("не готов к переезду", na=False) | s_lower.str.contains(
-        "не готова к переезду", na=False)
-    reloc = reloc_ready & ~reloc_not_ready
+    for value in s:
+        raw = str(value)
+        lower = raw.lower()
 
-    has_trips = s_lower.str.contains("командиров", na=False)
-    has_not = s_lower.str.contains("не", na=False)
-    has_rare = s_lower.str.contains("редк", na=False) # todo: doesn t work
+        # Разбиваем по запятым на логические куски:
+        # [город, (метро), статус переезда, статус командировок]
+        parts_raw = [p.strip() for p in raw.split(",") if p.strip()]
+        parts_lower = [p.lower() for p in parts_raw]
 
-    cond_none = has_not
-    cond_rare = has_rare & ~has_not
-    cond_regular = has_trips & ~cond_none & ~cond_rare
+        # --- Город ---
+        city = parts_raw[0] if parts_raw else ""
+        cities.append(city)
 
-    trips_level = np.select(
-        [cond_none, cond_rare, cond_regular],
-        ["none", "rare", "regular"],
-        default="unknown",
-    )
-    trips_level = pd.Series(trips_level, index=series.index, dtype="string")
+        # --- Переезд ---
+        reloc = False
+        for part in parts_lower:
+            if "переезд" in part:
+                # если явно написано 'не готов(а) к переезду' — считаем не готов
+                if "не готов" in part or "не готова" in part:
+                    reloc = False
+                # есл�� 'готов(а) к переезду' и нет 'не' — считаем готов
+                elif "готов к переезду" in part or "готова к переезду" in part:
+                    reloc = True
+        reloc_flags.append(int(reloc))
 
-    return city, reloc.astype(int), trips_level
+        # --- Командировки ---
+        level = "unknown"
+        found_trips = False
+
+        for part in parts_lower:
+            if "командиров" not in part:
+                continue
+
+            found_trips = True
+
+            if "не готов" in part or "не готова" in part:
+                level = "none"
+                break  # это самый жёсткий вариант, можно сразу выходить
+            if "редк" in part:
+                level = "rare"
+                # не выходим, вдруг в другом токене есть 'не готов', но это уже редкий случай
+                continue
+            if "готов" in part or "готова" in part:
+                # если пока ничего лучше не нашли, считаем regular
+                if level == "unknown":
+                    level = "regular"
+
+        if not found_trips:
+            level = "unknown"
+
+        trips_levels.append(level)
+
+    city_series = pd.Series(cities, index=series.index)
+    reloc_series = pd.Series(reloc_flags, index=series.index, dtype="int64")
+    trips_series = pd.Series(trips_levels, index=series.index, dtype="string")
+
+    return city_series, reloc_series, trips_series
 
 
 def parse_experience_years(series: pd.Series) -> pd.Series:
@@ -93,7 +128,6 @@ def parse_education_level(series: pd.Series) -> pd.Series:
     """
     Из 'Образование и ВУЗ' выбираем уровень образования.
     Нормализуем в небольшой словарь категорий.
-    todo: education_level, education_degree
     """
     s = series.astype(str).str.lower()
 
@@ -110,10 +144,26 @@ def parse_education_level(series: pd.Series) -> pd.Series:
         "bachelor",
         "higher",
         "vocational",
-        "secondary",
+        "school",
     ]
     level = np.select(conditions, choices, default="unknown")
     return pd.Series(level, index=series.index, dtype="string")
+
+
+def parse_education_last_year(series: pd.Series) -> pd.Series:
+    """
+    Из 'Образование и ВУЗ' вытаскиваем последний (максимальный) год (4 цифры).
+    Это условно год последнего (самого свежего) образования.
+    """
+    s = series.astype(str)
+    years = s.str.findall(r"\b(19\d{2}|20\d{2})\b")
+
+    def max_year(lst):
+        if not lst:
+            return np.nan
+        return max(int(y) for y in lst)
+
+    return years.apply(max_year).astype("float")
 
 
 def parse_has_car(series: pd.Series) -> pd.Series:
@@ -167,62 +217,44 @@ def parse_schedule(series: pd.Series) -> pd.Series:
     return pd.Series(normed_values, index=series.index, dtype="string")
 
 
-# ---------- Анализ многозначных (через запятую) колонок ----------
+# ---------- Нормализация должности ----------
 
-def inspect_multivalue_column(series: pd.Series, name: str | None = None) -> None:
+def normalize_position(series: pd.Series) -> pd.Series:
     """
-    Разбивает значения по запятым, триммит пробелы, считает частоты токенов.
-    Печатает все токены.
+    Должность в lower-case, с убранными лишними пробелами.
+    Никаких ролей, просто нормализованная текстовая строка.
     """
-    s = series.dropna().astype(str)
-    tokens: Counter[str] = Counter()
+    s = series.fillna("").astype(str).str.strip().str.lower()
 
-    for value in s:
-        parts = [p.strip() for p in value.split(",") if p.strip()]
-        tokens.update(parts)
-
-    print("\n=== MULTIVALUE ANALYSIS:", name or series.name, "===")
-    for token, cnt in tokens.most_common():
-        print(f"{token!r}: {cnt}")
-
-
-# ---------- Анализ должностей ----------
-
-def inspect_positions(series: pd.Series) -> None:
-    """
-    Выводит ВСЕ уникальные должности в lower/strip с их частотами.
-    """
-    s = series.fillna("").astype(str).str.lower().str.strip()
-    counter = Counter(s)
-    print("\n=== ALL POSITIONS (lowercased) ===")
-    for value, cnt in counter.most_common():
-        print(f"{value!r}: {cnt}")
+    s = s.str.replace(r"\s*,\s*", ", ", regex=True)
+    s = s.str.replace(r"\s*/\s*", " / ", regex=True)
+    return s
 
 
 # ---------- Главная функция аналитики ----------
 
 def main() -> None:
-    csv_path = Path("../data/input/hh.csv")  # пока жёстко, потом заменим на аргумент
+    csv_path = Path("../data/input/hh.csv")
     if not csv_path.is_file():
         raise FileNotFoundError(f"CSV file not found: {csv_path}")
 
     df = pd.read_csv(csv_path)
 
-
     pd.set_option("display.max_colwidth", 324)
     pd.set_option("display.max_columns", None)
-
-    # ---------- Распарсим ключевые признаки ----------
 
     print("\n=== PARSED FEATURES PREVIEW ===")
 
     sex, age = parse_sex_age(df["Пол, возраст"])
     salary = parse_salary(df["ЗП"])
-    city, reloc, trips_level = parse_city_mobility(df["Город"])
+    city, reloc, trips = parse_city_mobility(df["Город"])
     exp_years = parse_experience_years(df["Опыт (двойное нажатие для полной версии)"])
     edu_level = parse_education_level(df["Образование и ВУЗ"])
+    edu_last_year = parse_education_last_year(df["Образование и ВУЗ"])
     has_car = parse_has_car(df["Авто"])
     schedule_norm = parse_schedule(df["График"])
+    position_norm = normalize_position(df["Ищет работу на должность:"])
+    last_position_norm = normalize_position(df["Последеняя/нынешняя должность"])
 
     parsed_df = pd.DataFrame(
         {
@@ -231,21 +263,23 @@ def main() -> None:
             "salary": salary,
             "city": city,
             "relocation": reloc,
-            "business_trips_level": trips_level,
+            "business_trips": trips,
             "experience_years": exp_years,
             "education_level": edu_level,
+            "education_last_year": edu_last_year,
             "has_car": has_car,
-            "schedule_normalized": schedule_norm,
-            "raw_position": df["Ищет работу на должность:"],
+            "schedule": schedule_norm,
+            "position": position_norm,
+            "last_position": last_position_norm,
             "raw_last_position": df["Последеняя/нынешняя должность"],
             "last_work": df["Последенее/нынешнее место работы"],
+            "raw_education": df["Образование и ВУЗ"],
         }
     )
 
-    print(parsed_df.head(10))
-
-    # ---------- Анализ multi-value колонок и всех должностей ----------
-    inspect_positions(df["Ищет работу на должность:"])
+    print(parsed_df.tail(10))
+    print("\nDtypes of parsed features:")
+    print(parsed_df.dtypes)
 
 
 if __name__ == "__main__":
