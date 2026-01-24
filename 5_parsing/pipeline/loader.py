@@ -1,4 +1,5 @@
 import pandas as pd
+
 from .base import Handler
 
 
@@ -8,8 +9,8 @@ class CSVLoader(Handler):
         self.path = path
 
     def process(self, context: dict) -> dict:
-        print('\nLOADING DATA...')
-        df = pd.read_csv(self.path, index_col=0)
+        print("\nLOADING DATA...")
+        df = pd.read_csv(self.path)
         context["df"] = df
-        print('Done')
+        print("Done")
         return context

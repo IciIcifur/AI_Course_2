@@ -1,3 +1,5 @@
+import pandas as pd
+
 from .base import Handler
 
 
@@ -7,11 +9,15 @@ class SplitTargetHandler(Handler):
         self.target_column = target_column
 
     def process(self, context: dict) -> dict:
-        print('\nSPLITTING X AND Y...')
-        df = context["df"]
+        print("\nSPLITTING X AND Y...")
 
-        context["y"] = df[self.target_column].values
-        context["X"] = df.drop(columns=[self.target_column]).values
+        df: pd.DataFrame = context["df"]
 
-        print('Done')
+        y = df[self.target_column].values
+        X = df.drop(columns=[self.target_column]).values
+
+        context["y"] = y
+        context["X"] = X
+
+        print("Done")
         return context
