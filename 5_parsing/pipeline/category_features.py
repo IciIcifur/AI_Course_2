@@ -4,14 +4,18 @@ from .base import Handler
 
 
 class CategoryHandler(Handler):
-    """
-    Демография + география + график.
-    sex, city, relocation, business_trips, schedule.
-    """
+    """Extract categorical profile and location features from raw HH.ru data."""
 
-    # --- city / relocation / business_trips ---
+    def _parse_city_mobility(
+            self, series: pd.Series
+    ) -> tuple[pd.Series, pd.Series, pd.Series]:
+        """Parse city, relocation flag and business trips level from 'Город' column.
 
-    def _parse_city_mobility(self, series: pd.Series) -> tuple[pd.Series, pd.Series, pd.Series]:
+        :param series: source column with raw city and mobility information
+        :type series: pd.Series
+        :return: tuple of (city, relocation_flag, business_trips) series
+        :rtype: tuple[pd.Series, pd.Series, pd.Series]
+        """
         s = series.astype(str)
 
         cities: list[str] = []
@@ -23,11 +27,9 @@ class CategoryHandler(Handler):
             parts_raw = [p.strip() for p in raw.split(",") if p.strip()]
             parts_lower = [p.lower() for p in parts_raw]
 
-            # город
             city = parts_raw[0] if parts_raw else ""
             cities.append(city)
 
-            # переезд
             reloc = False
             for part in parts_lower:
                 if "переезд" in part:
@@ -37,7 +39,6 @@ class CategoryHandler(Handler):
                         reloc = True
             reloc_flags.append(int(reloc))
 
-            # командировки
             level = "unknown"
             found_trips = False
 
@@ -68,9 +69,14 @@ class CategoryHandler(Handler):
 
         return city_series, reloc_series, trips_series
 
-    # --- schedule ---
-
     def _normalize_schedule_token(self, token: str) -> str:
+        """Normalize raw schedule token to a compact category code.
+
+        :param token: raw schedule token text
+        :type token: str
+        :return: normalized schedule token
+        :rtype: str
+        """
         t = token.strip().lower()
         if t in ("полный день", "full day"):
             return "fullday"
@@ -85,6 +91,13 @@ class CategoryHandler(Handler):
         return "other"
 
     def _parse_schedule(self, series: pd.Series) -> pd.Series:
+        """Parse and normalize work schedule from 'График' column.
+
+        :param series: source column with raw schedule description
+        :type series: pd.Series
+        :return: series with '|' separated normalized schedule tokens
+        :rtype: pd.Series
+        """
         s = series.fillna("").astype(str)
         normed_values: list[str] = []
 
@@ -96,17 +109,27 @@ class CategoryHandler(Handler):
 
         return pd.Series(normed_values, index=series.index, dtype="string")
 
-    # --- sex (повторно, на всякий случай) ---
-
     def _parse_sex(self, series: pd.Series) -> pd.Series:
+        """Parse sex from the 'Пол, возраст' column.
+
+        :param series: source column with raw sex and age information
+        :type series: pd.Series
+        :return: series with parsed sex values
+        :rtype: pd.Series
+        """
         s = series.astype(str)
         sex = s.str.extract(r"^(Мужчина|Женщина)", expand=False)
         return sex
 
-    # --- основной метод ---
-
     def process(self, context: dict) -> dict:
-        print("\nPROFILE & LOCATION FEATURES...")
+        """Add categorical profile and location features to the DataFrame.
+
+        :param context: current pipeline context shared between all handlers
+        :type context: dict
+        :return: updated context with added categorical features
+        :rtype: dict
+        """
+        print("\nCATEGORY FEATURES...")
 
         df: pd.DataFrame = context["df"]
 

@@ -4,21 +4,30 @@ from .base import Handler
 
 
 class NormalizeHandler(Handler):
-    """
-    Обработка должностей:
-    - нормализуем текущую и последнюю должность
-    - при этом сырые текстовые колонки по должности дропаем
-      (образование остаётся в EducationHandler)
-    """
+    """Normalize current and last position columns."""
 
     def _normalize_position(self, series: pd.Series) -> pd.Series:
+        """Normalize raw position text to a unified lowercase representation.
+
+        :param series: source column with raw position text
+        :type series: pd.Series
+        :return: series with normalized position strings
+        :rtype: pd.Series
+        """
         s = series.fillna("").astype(str).str.strip().str.lower()
         s = s.str.replace(r"\s*,\s*", ", ", regex=True)
         s = s.str.replace(r"\s*/\s*", " / ", regex=True)
         return s
 
     def process(self, context: dict) -> dict:
-        print("\nPOSITION FEATURES...")
+        """Add normalized position features and drop raw position columns.
+
+        :param context: current pipeline context shared between all handlers
+        :type context: dict
+        :return: updated context with normalized position features
+        :rtype: dict
+        """
+        print("\nNORMALIZING...")
 
         df: pd.DataFrame = context["df"]
 
@@ -28,11 +37,8 @@ class NormalizeHandler(Handler):
         df = df.copy()
         df["position"] = position_norm
         df["last_position"] = last_position_norm
-
-        # Можно оставить last_work как raw-текст, если считаешь полезным
         df["last_work"] = df["Последенее/нынешнее место работы"]
 
-        # Дропаем сырые должностные поля (оставляем только нормализованные)
         df = df.drop(
             columns=[
                 "Ищет работу на должность:",

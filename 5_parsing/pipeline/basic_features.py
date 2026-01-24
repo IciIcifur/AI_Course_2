@@ -5,51 +5,33 @@ from .base import Handler
 
 
 class BasicHandler(Handler):
-    """
-    Базовые числовые и бинарные признаки:
-    salary, currency, age, experience_years, education_last_year, has_car.
-    """
-
-    # ====== Вспомогательные методы-парсеры ======
+    """Extract basic numeric features from raw HH.ru data."""
 
     def _parse_sex_age(self, series: pd.Series) -> tuple[pd.Series, pd.Series]:
-        """
-        Поддерживаем и русский, и английский варианты:
-        - 'Мужчина ,  42 года , ...'
-        - 'Женщина ,  30 лет , ...'
-        - 'Male ,  42 years , ...'
-        - 'Female ,  31 year , ...'
+        """Parse sex and age from the raw 'Пол, возраст' column.
+
+        :param series: source column with raw sex and age information
+        :type series: pd.Series
+        :return: tuple of (sex, age) series
+        :rtype: tuple[pd.Series, pd.Series]
         """
         s = series.astype(str)
 
-        s_lower = s.str.lower()
-        en_mask = s_lower.str.startswith("male") | s_lower.str.startswith("female")
-        print("DEBUG: EN rows in Пол, возраст:", en_mask.sum())
-
-        # --- пол ---
-        # Сначала пробуем русские варианты
         sex = s.str.extract(r"^(Мужчина|Женщина)", expand=False)
 
-        # Где не сработало, пробуем английские Male/Female
         mask_missing = sex.isna()
         if mask_missing.any():
             sex_en = s[mask_missing].str.extract(r"^(Male|Female)", expand=False)
-            # Маппим Male/Female в Мужчина/Женщина, чтобы далее всё было в одном формате
             sex_en_mapped = sex_en.map({"Male": "Мужчина", "Female": "Женщина"})
             sex.loc[mask_missing] = sex_en_mapped
 
-        # --- возраст ---
         s_lower = s.str.lower()
 
-        # Сначала русские 'год/года/лет'
         age_str = s_lower.str.extract(r"(\d+)\s*(?:год|года|лет)", expand=False)
 
-        # Для тех, где не нашли, пробуем английские 'year/years'
         mask_age_missing = age_str.isna()
         if mask_age_missing.any():
-            age_str_en = s_lower[mask_age_missing].str.extract(
-                r"(\d+)\s*(?:year|years)", expand=False
-            )
+            age_str_en = s_lower[mask_age_missing].str.extract(r"(\d+)\s*(?:year|years)", expand=False)
             age_str.loc[mask_age_missing] = age_str_en
 
         age = pd.to_numeric(age_str, errors="coerce").astype("Int64")
@@ -57,23 +39,23 @@ class BasicHandler(Handler):
         return sex, age
 
     def _parse_salary_and_currency(self, series: pd.Series) -> tuple[pd.Series, pd.Series]:
+        """Parse numeric salary amount and currency code from the 'ЗП' column.
+
+        :param series: source column with raw salary text
+        :type series: pd.Series
+        :return: tuple of (salary, currency) series
+        :rtype: tuple[pd.Series, pd.Series]
+        """
         s = series.astype(str).str.replace("\xa0", " ", regex=False)
 
-        numeric_str = (
-            s.str.replace(" ", "", regex=False)
-            .str.extract(r"(\d+)", expand=False)
-        )
+        numeric_str = (s.str.replace(" ", "", regex=False).str.extract(r"(\d+)", expand=False))
         salary = pd.to_numeric(numeric_str, errors="coerce")
 
-        tail = (
-            s.str.replace(" ", "", regex=False)
-            .str.extract(r"\d+(.*)", expand=False)
-            .fillna("")
-            .str.strip()
-            .str.lower()
-        )
+        tail = (s.str.replace(" ", "", regex=False).str.extract(r"\d+(.*)", expand=False).fillna(
+            "").str.strip().str.lower())
 
         def extract_currency(text: str) -> str:
+            """Extract currency token from salary tail text."""
             if not text:
                 return "unknown"
 
@@ -88,6 +70,13 @@ class BasicHandler(Handler):
         return salary, currency
 
     def _parse_experience_years(self, series: pd.Series) -> pd.Series:
+        """Parse total years of experience from raw experience column.
+
+        :param series: source column with raw experience description
+        :type series: pd.Series
+        :return: total experience in years, rounded to two decimals
+        :rtype: pd.Series
+        """
         s = series.astype(str).str.split("\n").str[0]
 
         years = s.str.extract(r"(\d+)\s*(?:год|года|лет)", expand=False)
@@ -101,6 +90,13 @@ class BasicHandler(Handler):
         return total_years.round(2)
 
     def _parse_education_last_year(self, series: pd.Series) -> pd.Series:
+        """Parse last education year from the 'Образование и ВУЗ' column.
+
+        :param series: source column with raw education description
+        :type series: pd.Series
+        :return: series with the most recent education year
+        :rtype: pd.Series
+        """
         s = series.astype(str)
         years = s.str.findall(r"\b(19\d{2}|20\d{2})\b")
 
@@ -112,20 +108,34 @@ class BasicHandler(Handler):
         return years.apply(max_year).astype("Int64")
 
     def _parse_has_car(self, series: pd.Series) -> pd.Series:
+        """Parse car ownership flag from the 'Авто' column.
+
+        :param series: source column with raw car ownership text
+        :type series: pd.Series
+        :return: binary series indicating car ownership
+        :rtype: pd.Series
+        """
         s = series.astype(str).str.lower()
         has_car = s.str.contains("имеется собственный автомобиль", na=False)
         return has_car.astype(int)
 
-    # ====== Основной метод ======
-
     def process(self, context: dict) -> dict:
-        print("\nBASIC NUMERIC FEATURES...")
+        """Add basic numeric features to the DataFrame.
+
+        :param context: current pipeline context shared between all handlers
+        :type context: dict
+        :return: updated context with added basic features
+        :rtype: dict
+        """
+        print("\nBASIC FEATURES...")
 
         df: pd.DataFrame = context["df"]
 
         sex, age = self._parse_sex_age(df["Пол, возраст"])
         salary, currency = self._parse_salary_and_currency(df["ЗП"])
-        exp_years = self._parse_experience_years(df["Опыт (двойное нажатие для полной версии)"])
+        exp_years = self._parse_experience_years(
+            df["Опыт (двойное нажатие для полной версии)"]
+        )
         edu_last_year = self._parse_education_last_year(df["Образование и ВУЗ"])
         has_car = self._parse_has_car(df["Авто"])
 

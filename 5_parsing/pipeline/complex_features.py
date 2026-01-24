@@ -1,20 +1,31 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
+
 from .base import Handler
 
 
 class ComplexHandler(Handler):
-    """
-    Обрабатывает колонку 'Образование и ВУЗ':
-    - education_level
-    - (raw_education остаётся для будущего анализа)
-    """
+    """Extract education level features from the 'Образование и ВУЗ' column."""
 
     def __init__(self, next_handler=None, keep_raw: bool = True):
+        """Initialize handler with optional raw education preservation.
+
+        :param next_handler: next handler to be executed in the pipeline
+        :type next_handler: Handler or None
+        :param keep_raw: whether to keep raw education text in a separate column
+        :type keep_raw: bool
+        """
         super().__init__(next_handler)
         self.keep_raw = keep_raw
 
     def _parse_education_level(self, series: pd.Series) -> pd.Series:
+        """Parse normalized education level from the 'Образование и ВУЗ' column.
+
+        :param series: source column with raw education description
+        :type series: pd.Series
+        :return: series with normalized education level codes
+        :rtype: pd.Series
+        """
         s = series.astype(str).str.lower()
 
         conditions = [
@@ -40,7 +51,14 @@ class ComplexHandler(Handler):
         return level
 
     def process(self, context: dict) -> dict:
-        print("\nEDUCATION FEATURES...")
+        """Add education level features to the DataFrame.
+
+        :param context: current pipeline context shared between all handlers
+        :type context: dict
+        :return: updated context with education features
+        :rtype: dict
+        """
+        print("\nCOMPLEX FEATURES...")
 
         df: pd.DataFrame = context["df"]
 

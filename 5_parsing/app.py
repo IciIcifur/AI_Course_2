@@ -13,6 +13,17 @@ from pipeline.split import SplitTargetHandler
 
 
 def build_pipeline(csv_path: Path, target_column: str = "salary") -> CSVLoader:
+    """
+    Builds a full pipeline from needed handlers, passing key params to them.
+
+    :param csv_path: path to the input csv file
+    :type csv_path: Path
+    :param target_column: target column to become target vector Y after analysis
+    :type target_column: str
+    :return: CSVLoader with set up next handlers
+    :rtype: Handler
+    """
+
     loader = CSVLoader(path=str(csv_path))
     cleaner = DataCleaningHandler()
     basic = BasicHandler()
@@ -31,6 +42,13 @@ def build_pipeline(csv_path: Path, target_column: str = "salary") -> CSVLoader:
 
 
 def parse_args() -> argparse.Namespace:
+    """
+    Parses args to extract path to the csv file with data.
+
+    :return: parsed args, including csv_path
+    :rtype: argparse.Namespace
+    """
+
     parser = argparse.ArgumentParser(description="HH.ru parsing pipeline")
     parser.add_argument("csv_path", type=str, help="Path to hh.csv")
     parser.add_argument(
@@ -43,6 +61,12 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """
+    Runs a full parsing and preparing pipeline on the provided via arguments data.
+
+    :return: Creates x_data.npy and y_data.npy near the initial data file
+    """
+
     args = parse_args()
     csv_path = Path(args.csv_path)
 

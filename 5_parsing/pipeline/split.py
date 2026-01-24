@@ -4,28 +4,30 @@ from .base import Handler
 
 
 class SplitTargetHandler(Handler):
+    """Split the final DataFrame into feature matrix X and target vector y."""
+
     def __init__(self, target_column: str, next_handler=None):
+        """Initialize splitter with the name of the target column.
+
+        :param target_column: name of the target column to be used as y
+        :type target_column: str
+        :param next_handler: next handler to be executed in the pipeline
+        :type next_handler: Handler or None
+        """
         super().__init__(next_handler)
         self.target_column = target_column
 
     def process(self, context: dict) -> dict:
+        """Split DataFrame into X and y and store them in the context.
+
+        :param context: current pipeline context shared between all handlers
+        :type context: dict
+        :return: updated context with 'X' and 'y' arrays added
+        :rtype: dict
+        """
         print("\nSPLITTING X AND Y...")
 
         df: pd.DataFrame = context["df"]
-
-        pd.set_option("display.max_colwidth", 324)
-        pd.set_option("display.max_columns", None)
-        print("\nDF HEAD BEFORE SPLIT:")
-        print(df.head())
-
-        print("\nDTYPES BEFORE SPLIT:")
-        print(df.dtypes)
-
-        print("\nNaN COUNTS PER COLUMN:")
-        print(df.isna().sum())
-
-        obj_cols = df.select_dtypes(include=["object", "string"]).columns.tolist()
-        print("\nObject/string columns before split:", obj_cols)
 
         for col in df.columns:
             if col == self.target_column:
