@@ -4,7 +4,7 @@ import numpy as np
 
 
 def main():
-    base = Path("../data/input")  # папка, где лежит hh.csv и npy
+    base = Path("../data/input")
     x_path = base / "x_data.npy"
     y_path = base / "y_data.npy"
 

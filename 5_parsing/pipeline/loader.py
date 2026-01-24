@@ -11,6 +11,11 @@ class CSVLoader(Handler):
     def process(self, context: dict) -> dict:
         print("\nLOADING DATA...")
         df = pd.read_csv(self.path)
+
+        for col in ["Unnamed: 0", "Unnamed: 0.1"]:
+            if col in df.columns:
+                df = df.drop(columns=[col])
+
         context["df"] = df
         print("Done")
         return context

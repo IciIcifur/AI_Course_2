@@ -13,6 +13,10 @@ class SplitTargetHandler(Handler):
 
         df: pd.DataFrame = context["df"]
 
+        pd.set_option("display.max_colwidth", 324)
+        pd.set_option("display.max_columns", None)
+        print(df.head())
+
         y = df[self.target_column].values
         X = df.drop(columns=[self.target_column]).values
 
