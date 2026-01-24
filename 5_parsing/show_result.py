@@ -8,8 +8,8 @@ def main():
     x_path = base / "x_data.npy"
     y_path = base / "y_data.npy"
 
-    X = np.load(x_path, allow_pickle=True)
-    y = np.load(y_path, allow_pickle=True)
+    X = np.load(x_path)
+    y = np.load(y_path)
 
     print("X shape:", X.shape)
     print("y shape:", y.shape)

@@ -13,12 +13,48 @@ class BasicHandler(Handler):
     # ====== Вспомогательные методы-парсеры ======
 
     def _parse_sex_age(self, series: pd.Series) -> tuple[pd.Series, pd.Series]:
+        """
+        Поддерживаем и русский, и английский варианты:
+        - 'Мужчина ,  42 года , ...'
+        - 'Женщина ,  30 лет , ...'
+        - 'Male ,  42 years , ...'
+        - 'Female ,  31 year , ...'
+        """
         s = series.astype(str)
-        sex = s.str.extract(r"^(Мужчина|Женщина)", expand=False)
+
         s_lower = s.str.lower()
+        en_mask = s_lower.str.startswith("male") | s_lower.str.startswith("female")
+        print("DEBUG: EN rows in Пол, возраст:", en_mask.sum())
+
+        # --- пол ---
+        # Сначала пробуем русские варианты
+        sex = s.str.extract(r"^(Мужчина|Женщина)", expand=False)
+
+        # Где не сработало, пробуем английские Male/Female
+        mask_missing = sex.isna()
+        if mask_missing.any():
+            sex_en = s[mask_missing].str.extract(r"^(Male|Female)", expand=False)
+            # Маппим Male/Female в Мужчина/Женщина, чтобы далее всё было в одном формате
+            sex_en_mapped = sex_en.map({"Male": "Мужчина", "Female": "Женщина"})
+            sex.loc[mask_missing] = sex_en_mapped
+
+        # --- возраст ---
+        s_lower = s.str.lower()
+
+        # Сначала русские 'год/года/лет'
         age_str = s_lower.str.extract(r"(\d+)\s*(?:год|года|лет)", expand=False)
-        age = pd.to_numeric(age_str, errors="coerce")
-        return sex, age.astype("Int64")
+
+        # Для тех, где не нашли, пробуем английские 'year/years'
+        mask_age_missing = age_str.isna()
+        if mask_age_missing.any():
+            age_str_en = s_lower[mask_age_missing].str.extract(
+                r"(\d+)\s*(?:year|years)", expand=False
+            )
+            age_str.loc[mask_age_missing] = age_str_en
+
+        age = pd.to_numeric(age_str, errors="coerce").astype("Int64")
+
+        return sex, age
 
     def _parse_salary_and_currency(self, series: pd.Series) -> tuple[pd.Series, pd.Series]:
         s = series.astype(str).str.replace("\xa0", " ", regex=False)

@@ -114,7 +114,26 @@ class EncodingHandler(Handler):
         )
         df = df.drop(columns=drop_cols, errors="ignore")
 
-        # --- 7. удаляем оставшиеся object/string колонки, кроме target_column ---
+        # --- 7. Импутация пропусков в числовых колонках ---
+
+        # Простая стратегия:
+        # - age, experience_years, education_last_year -> медиана
+        # (можно расширить список при желании)
+        for col in ["age", "experience_years", "education_last_year"]:
+            if col in df.columns:
+                median = df[col].median()
+                df[col] = df[col].fillna(median)
+
+        # Если остались какие-то другие числовые колонки с NaN —
+        # можно заполнить их нулями или тоже по медиане.
+        # Например, по всем numeric-колонкам:
+        numeric_cols = df.select_dtypes(include=["number"]).columns
+        for col in numeric_cols:
+            if df[col].isna().any():
+                median = df[col].median()
+                df[col] = df[col].fillna(median)
+
+        # --- 8. удаляем оставшиеся object/string колонки, кроме target_column ---
 
         # иногда могут остаться неожиданные текстовые признаки;
         # в X мы хотим только числа
@@ -122,7 +141,7 @@ class EncodingHandler(Handler):
         non_numeric = [c for c in non_numeric if c != self.target_column]
         df = df.drop(columns=non_numeric, errors="ignore")
 
-        # --- 8. приведение bool -> int (если остались) ---
+        # --- 9. приведение bool -> int (если остались) ---
 
         bool_cols = df.select_dtypes(include=["bool"]).columns
         for col in bool_cols:
