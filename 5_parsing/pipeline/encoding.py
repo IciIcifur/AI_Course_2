@@ -66,6 +66,15 @@ class EncodingHandler(Handler):
 
         return df
 
+    def _label_encode_city(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Label-encode city column."""
+        if "city" in df.columns:
+            city_series = df['city'].fillna("").astype(str)
+            unique = sorted(city_series.unique())
+            mapping = {value: idx for idx, value in enumerate(unique)}
+            df['city'] = city_series.map(mapping).astype("int64")
+        return df
+
     def _encode_schedule(self, df: pd.DataFrame) -> pd.DataFrame:
         """Convert multi-valued schedule column to multi-hot features."""
         if "schedule" in df.columns:
@@ -147,6 +156,7 @@ class EncodingHandler(Handler):
         df = self._encode_binary_flags(df)
         df = self._fix_numeric_types(df)
         df = self._label_encode_positions(df)
+        df = self._label_encode_city(df)
         df = self._encode_schedule(df)
         df = self._one_hot_categoricals(df)
         df = self._drop_raw_text_columns(df)
