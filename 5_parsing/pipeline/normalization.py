@@ -19,7 +19,25 @@ class NormalizeHandler(Handler):
         s = s.str.replace(r"\s*/\s*", " / ", regex=True)
         return s
 
-    def _convert_salary_to_usd(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _normalize_city(self, series: pd.Series) -> pd.Series:
+        """Normalize city names: lowercase, trim, drop text in parentheses."""
+        s = series.fillna("").astype(str).str.strip().str.lower()
+
+        mask_moscow = s.str.contains(r"\bмосква\b", regex=True)
+        s.loc[mask_moscow] = "москва"
+
+        mask_mo = s.str.contains(r"московск(ая|ой)\s+обл", regex=True) | s.str.contains(
+            r"московская область", regex=True
+        )
+        s.loc[mask_mo & ~mask_moscow] = "московская область"
+
+        s = s.str.replace(r"\s*\(.*\)$", "", regex=True)
+
+        s = s.str.replace(r"\s+", " ", regex=True)
+
+        return s
+
+    def _convert_salary_to_rub(self, df: pd.DataFrame) -> pd.DataFrame:
         """Convert salary to RUB using fixed exchange rates based on currency column."""
         if "salary" not in df.columns or "currency" not in df.columns:
             return df
@@ -54,11 +72,14 @@ class NormalizeHandler(Handler):
 
         df: pd.DataFrame = context["df"]
 
+        city_norm = self._normalize_city(df['city'])
         position_norm = self._normalize_position(df["Ищет работу на должность:"])
         last_position_norm = self._normalize_position(df["Последеняя/нынешняя должность"])
+        salary_norm = self._convert_salary_to_rub(df)
 
         df = df.copy()
-        df["salary"] = self._convert_salary_to_usd(df)
+        df["salary"] = salary_norm
+        df["city"] = city_norm
         df["position"] = position_norm
         df["last_position"] = last_position_norm
         df["last_work"] = df["Последенее/нынешнее место работы"]

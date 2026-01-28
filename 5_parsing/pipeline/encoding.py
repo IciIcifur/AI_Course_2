@@ -58,6 +58,8 @@ class EncodingHandler(Handler):
                 series = df[column].fillna("").astype(str)
                 unique = sorted(series.unique())
                 mapping = {value: idx for idx, value in enumerate(unique)}
+                if not (column in ['position', 'last_position']):
+                    print(mapping)
                 df[column] = series.map(mapping).astype("int64")
         return df
 
