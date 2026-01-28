@@ -50,29 +50,15 @@ class EncodingHandler(Handler):
 
         return df
 
-    def _label_encode_positions(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Label-encode position and last_position columns."""
-        if "position" in df.columns:
-            pos_series = df["position"].fillna("").astype(str)
-            uniques = sorted(pos_series.unique())
-            mapping = {val: idx for idx, val in enumerate(uniques)}
-            df["position"] = pos_series.map(mapping).astype("int64")
-
-        if "last_position" in df.columns:
-            pos_series = df["last_position"].fillna("").astype(str)
-            uniques = sorted(pos_series.unique())
-            mapping = {val: idx for idx, val in enumerate(uniques)}
-            df["last_position"] = pos_series.map(mapping).astype("int64")
-
-        return df
-
-    def _label_encode_city(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Label-encode city column."""
-        if "city" in df.columns:
-            city_series = df['city'].fillna("").astype(str)
-            unique = sorted(city_series.unique())
-            mapping = {value: idx for idx, value in enumerate(unique)}
-            df['city'] = city_series.map(mapping).astype("int64")
+    def _label_encode_categoricals(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Label-encode given column in int64"""
+        cat_cols: list[str] = ['currency', 'city', 'position', 'last_position']
+        for column in cat_cols:
+            if column in df.columns:
+                series = df[column].fillna("").astype(str)
+                unique = sorted(series.unique())
+                mapping = {value: idx for idx, value in enumerate(unique)}
+                df[column] = series.map(mapping).astype("int64")
         return df
 
     def _encode_schedule(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -91,7 +77,7 @@ class EncodingHandler(Handler):
     def _one_hot_categoricals(self, df: pd.DataFrame) -> pd.DataFrame:
         """One-hot encode selected categorical columns."""
         cat_cols: list[str] = []
-        for col in ["currency", "business_trips", "education_level"]:
+        for col in ["business_trips", "education_level"]:
             if col in df.columns and df[col].dtype.name in ("object", "string"):
                 cat_cols.append(col)
 
@@ -155,8 +141,7 @@ class EncodingHandler(Handler):
         df = self._drop_unknown_categories(df)
         df = self._encode_binary_flags(df)
         df = self._fix_numeric_types(df)
-        df = self._label_encode_positions(df)
-        df = self._label_encode_city(df)
+        df = self._label_encode_categoricals(df)
         df = self._encode_schedule(df)
         df = self._one_hot_categoricals(df)
         df = self._drop_raw_text_columns(df)

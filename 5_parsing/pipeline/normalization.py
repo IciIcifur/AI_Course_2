@@ -19,6 +19,29 @@ class NormalizeHandler(Handler):
         s = s.str.replace(r"\s*/\s*", " / ", regex=True)
         return s
 
+    def _convert_salary_to_usd(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Convert salary to RUB using fixed exchange rates based on currency column."""
+        if "salary" not in df.columns or "currency" not in df.columns:
+            return df
+
+        rates = {
+            "usd": 76.55,
+            "eur": 91.46,
+            "руб": 1.0,
+            "грн": 1.8,
+            "azn": 45.03,
+            "kzt": 0.15,
+            "kgs": 0.88,
+            "сум": 0.006,
+        }
+
+        salary = df["salary"].astype(float)
+        cur = df["currency"].fillna("").astype(str).str.lower()
+
+        rate_series = cur.map(rates)
+        rate_series = rate_series.fillna(1.0)
+        return (salary * rate_series).astype(float)
+
     def process(self, context: dict) -> dict:
         """Add normalized position features and drop raw position columns.
 
@@ -35,6 +58,7 @@ class NormalizeHandler(Handler):
         last_position_norm = self._normalize_position(df["Последеняя/нынешняя должность"])
 
         df = df.copy()
+        df["salary"] = self._convert_salary_to_usd(df)
         df["position"] = position_norm
         df["last_position"] = last_position_norm
         df["last_work"] = df["Последенее/нынешнее место работы"]
