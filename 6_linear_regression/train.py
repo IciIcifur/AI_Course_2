@@ -4,7 +4,7 @@ from pathlib import Path
 import joblib
 import numpy as np
 from sklearn.linear_model import Ridge
-from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
@@ -92,11 +92,28 @@ def main() -> None:
 
     # Оценим качество на валидации
     y_pred_valid = model.predict(X_valid_scaled)
-    mae = mean_absolute_error(y_valid, y_pred_valid)
-    rmse = mean_squared_error(y_valid, y_pred_valid)
+    mae_valid = mean_absolute_error(y_valid, y_pred_valid)
+    rmse_valid = mean_squared_error(y_valid, y_pred_valid)
+    r2_valid = r2_score(y_valid, y_pred_valid)
 
-    print(f"Validation MAE:  {mae:.2f} RUB")
-    print(f"Validation RMSE: {rmse:.2f} RUB")
+    mean_y_valid = y_valid.mean()
+    median_y_valid = np.median(y_valid)
+
+    nmae_mean = mae_valid / mean_y_valid if mean_y_valid != 0 else np.nan
+    nmae_median = mae_valid / median_y_valid if median_y_valid != 0 else np.nan
+
+    eps = 1e-6
+    mape_valid = np.mean(
+        np.abs((y_valid - y_pred_valid) / np.maximum(np.abs(y_valid), eps))
+    ) * 100
+
+    print("=== Validation metrics ===")
+    print(f"MAE:           {mae_valid:.2f} RUB")
+    print(f"RMSE:          {rmse_valid:.2f} RUB")
+    print(f"R^2:           {r2_valid:.4f}")
+    print(f"NMAE (mean y):   {nmae_mean:.3f} (~{nmae_mean * 100:.1f}%)")
+    print(f"NMAE (median y): {nmae_median:.3f} (~{nmae_median * 100:.1f}%)")
+    print(f"MAPE:            {mape_valid:.1f}%")
 
     # Сохраняем И скейлер, И модель, чтобы в app.py применять те же преобразования
     output_path.parent.mkdir(parents=True, exist_ok=True)
