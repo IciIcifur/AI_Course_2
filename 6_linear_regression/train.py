@@ -1,4 +1,5 @@
 import argparse
+from math import sqrt
 from pathlib import Path
 
 import joblib
@@ -6,7 +7,7 @@ import numpy as np
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, PolynomialFeatures
 
 
 def parse_args() -> argparse.Namespace:
@@ -52,6 +53,37 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def print_metrics(
+        name: str, y_true: np.ndarray, y_pred: np.ndarray
+) -> None:
+    mae = mean_absolute_error(y_true, y_pred)
+    mse = mean_squared_error(y_true, y_pred)
+    rmse = sqrt(mse)
+    r2 = r2_score(y_true, y_pred)
+
+    mean_y = y_true.mean()
+    median_y = np.median(y_true)
+    nmae_mean = mae / mean_y if mean_y != 0 else np.nan
+    nmae_median = mae / median_y if median_y != 0 else np.nan
+
+    eps = 1e-6
+    mape = (
+            np.mean(
+                np.abs((y_true - y_pred) / np.maximum(np.abs(y_true), eps))
+            )
+            * 100
+    )
+
+    print(f"=== Validation metrics ({name}) ===")
+    print(f"MAE:           {mae:.2f} RUB")
+    print(f"RMSE:          {rmse:.2f} RUB")
+    print(f"R^2:           {r2:.4f}")
+    print(f"NMAE (mean y):   {nmae_mean:.3f} (~{nmae_mean * 100:.1f}%)")
+    print(f"NMAE (median y): {nmae_median:.3f} (~{nmae_median * 100:.1f}%)")
+    print(f"MAPE:            {mape:.1f}%")
+    print()
+
+
 def main() -> None:
     args = parse_args()
 
@@ -93,33 +125,16 @@ def main() -> None:
     X_train_scaled = scaler.fit_transform(X_train)
     X_valid_scaled = scaler.transform(X_valid)
 
+    poly = PolynomialFeatures(degree=2, include_bias=False)
+    X_train_poly = poly.fit_transform(X_train_scaled)
+    X_valid_poly = poly.transform(X_valid_scaled)
+
     model = Ridge(alpha=args.alpha, random_state=args.random_state)
-    model.fit(X_train_scaled, y_train)
+    model.fit(X_train_poly, y_train)
 
-    # Оценим качество на валидации
-    y_pred_valid = model.predict(X_valid_scaled)
-    mae_valid = mean_absolute_error(y_valid, y_pred_valid)
-    rmse_valid = mean_squared_error(y_valid, y_pred_valid)
-    r2_valid = r2_score(y_valid, y_pred_valid)
+    y_pred = model.predict(X_valid_poly)
 
-    mean_y_valid = y_valid.mean()
-    median_y_valid = np.median(y_valid)
-
-    nmae_mean = mae_valid / mean_y_valid if mean_y_valid != 0 else np.nan
-    nmae_median = mae_valid / median_y_valid if median_y_valid != 0 else np.nan
-
-    eps = 1e-6
-    mape_valid = np.mean(
-        np.abs((y_valid - y_pred_valid) / np.maximum(np.abs(y_valid), eps))
-    ) * 100
-
-    print("=== Validation metrics ===")
-    print(f"MAE:           {mae_valid:.2f} RUB")
-    print(f"RMSE:          {rmse_valid:.2f} RUB")
-    print(f"R^2:           {r2_valid:.4f}")
-    print(f"NMAE (mean y):   {nmae_mean:.3f} (~{nmae_mean * 100:.1f}%)")
-    print(f"NMAE (median y): {nmae_median:.3f} (~{nmae_median * 100:.1f}%)")
-    print(f"MAPE:            {mape_valid:.1f}%")
+    print_metrics('Ridge', y_valid, y_pred)
 
     # Сохраняем И скейлер, И модель, чтобы в app.py применять те же преобразования
     output_path.parent.mkdir(parents=True, exist_ok=True)
