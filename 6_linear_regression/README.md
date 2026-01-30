@@ -4,7 +4,7 @@
 Запуск предсказаний на модели с загрузкой сохраненных ранее весов:
 
 ```bash
-python 6_linear_regression/app.py path/to/x_data.npy path/to/y_data.npy
+python 6_linear_regression/app.py path/to/x_data.npy --model-path resources/salary_model.joblib
 ```
 
 В директории resources после обучения модели создается файл `salary_model.joblib` с сохраненными весами.
@@ -17,7 +17,7 @@ python 6_linear_regression/app.py path/to/x_data.npy path/to/y_data.npy
 помощи `Standard Scaler` (`MinMax Scaler` давал более плохие результаты), а также логарифмируем y, чтобы сгладить
 выбросы.
 
-Выбрана модель `RidgeCV` (`Ridge`), подбирающая наиболее подходящий коэффициент регуляризации `alpfa`; после обучения
+Выбрана модель `RidgeCV` (`Ridge`), подбирающая наиболее подходящий коэффициент регуляризации `alpha`; после обучения
 печатаются ее основные характеристики на валидационной выборке: MAE, RMSE, R^2, MAPE, а также подобранный коэффициент.
 
 Затем веса модели вместе со скейлером сохраняются по заданному пути.
