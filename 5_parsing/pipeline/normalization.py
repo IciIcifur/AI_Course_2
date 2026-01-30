@@ -26,7 +26,7 @@ class NormalizeHandler(Handler):
         mask_moscow = s.str.contains(r"\bмосква\b", regex=True)
         s.loc[mask_moscow] = "москва"
 
-        mask_mo = s.str.contains(r"московск(ая|ой)\s+обл", regex=True) | s.str.contains(
+        mask_mo = s.str.contains(r"московск(?:ая|ой)\s+обл", regex=True) | s.str.contains(
             r"московская область", regex=True
         )
         s.loc[mask_mo & ~mask_moscow] = "московская область"

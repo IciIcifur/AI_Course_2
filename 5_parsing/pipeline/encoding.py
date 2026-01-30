@@ -50,6 +50,35 @@ class EncodingHandler(Handler):
 
         return df
 
+    def _keep_top_categories(self, s: pd.Series, top_n: int, other: str = "OTHER") -> pd.Series:
+        s = s.fillna("UNKNOWN").astype(str)
+        top = s.value_counts().head(top_n).index
+        return s.where(s.isin(top), other=other)
+
+    def _one_hot_high_cardinality(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        One-hot encode high-cardinality categoricals safely by keeping only top-N categories.
+        """
+        df = df.copy()
+
+        top_cfg = {
+            "city": 500,
+            "position": 500,
+            "last_position": 500,
+            "currency": 8,
+        }
+
+        cols = [c for c in top_cfg.keys() if c in df.columns]
+        if not cols:
+            return df
+
+        for c in cols:
+            df[c] = self._keep_top_categories(df[c], top_n=top_cfg[c], other="OTHER")
+
+        # One-hot
+        df = pd.get_dummies(df, columns=cols, prefix=cols, drop_first=False, dummy_na=False)
+        return df
+
     def _label_encode_categoricals(self, df: pd.DataFrame) -> pd.DataFrame:
         """Label-encode given column in int64"""
         cat_cols: list[str] = ['currency', 'city', 'position', 'last_position']
@@ -140,6 +169,12 @@ class EncodingHandler(Handler):
             df[col] = df[col].astype(int)
         return df
 
+    def _dedup_by_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        if self.target_column not in df.columns:
+            return df
+        feature_cols = [c for c in df.columns if c != self.target_column]
+        return df.groupby(feature_cols, as_index=False)[self.target_column].median()
+
     def process(self, context: dict) -> dict:
         """Encode categorical features and clean the DataFrame.
 
@@ -151,8 +186,8 @@ class EncodingHandler(Handler):
         print("\nENCODING COLUMNS...")
 
         gradational_columns_map = {
-            'education_level':  {'school': 0,  'vocational': 1,  'higher': 2},
-            'business_trips': {'none': 0,  'rare': 1, 'regular': 2}
+            'education_level': {'school': 0, 'vocational': 1, 'higher': 2},
+            'business_trips': {'none': 0, 'rare': 1, 'regular': 2}
         }
 
         df: pd.DataFrame = context["df"].copy()
@@ -160,11 +195,12 @@ class EncodingHandler(Handler):
         df = self._drop_unknown_categories(df)
         df = self._encode_binary_flags(df)
         df = self._fix_numeric_types(df)
+        df = self._dedup_by_features(df)
 
         df = self._gradational_label_encoding(df, gradational_columns_map)
-        df = self._label_encode_categoricals(df)
-
+        df = self._one_hot_high_cardinality(df)
         df = self._encode_schedule(df)
+
         df = self._drop_raw_text_columns(df)
         df = self._impute_missing_numeric(df)
         df = self._drop_non_numeric_except_target(df)
