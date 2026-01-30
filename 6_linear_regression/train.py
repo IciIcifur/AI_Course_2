@@ -7,7 +7,7 @@ import numpy as np
 from sklearn.linear_model import RidgeCV
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, PolynomialFeatures
+from sklearn.preprocessing import StandardScaler
 
 
 def parse_args() -> argparse.Namespace:
@@ -67,17 +67,12 @@ def print_metrics(
     nmae_median = mae / median_y if median_y != 0 else np.nan
 
     eps = 1e-6
-    mape = (
-            np.mean(
-                np.abs((y_true - y_pred) / np.maximum(np.abs(y_true), eps))
-            )
-            * 100
-    )
+    mape = (np.mean(np.abs((y_true - y_pred) / np.maximum(np.abs(y_true), eps))) * 100)
 
     print(f"=== Validation metrics ({name}) ===")
-    print(f"MAE:           {mae:.2f} RUB")
-    print(f"RMSE:          {rmse:.2f} RUB")
-    print(f"R^2:           {r2:.4f}")
+    print(f"MAE:             {mae:.2f} RUB")
+    print(f"RMSE:            {rmse:.2f} RUB")
+    print(f"R^2:             {r2:.4f}")
     print(f"NMAE (mean y):   {nmae_mean:.3f} (~{nmae_mean * 100:.1f}%)")
     print(f"NMAE (median y): {nmae_median:.3f} (~{nmae_median * 100:.1f}%)")
     print(f"MAPE:            {mape:.1f}%")
@@ -107,18 +102,8 @@ def main() -> None:
     if y.ndim > 1:
         y = y.ravel()
 
-    (
-        X_train,
-        X_valid,
-        y_train,
-        y_valid,
-    ) = train_test_split(
-        X,
-        y,
-        test_size=args.test_size,
-        random_state=args.random_state,
-        shuffle=True,
-    )
+    (X_train, X_valid, y_train, y_valid,) = train_test_split(X, y, test_size=args.test_size,
+                                                             random_state=args.random_state, shuffle=True)
 
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
@@ -128,7 +113,6 @@ def main() -> None:
 
     ridge = RidgeCV(alphas=np.logspace(-4, 6, 50), cv=5)
     ridge.fit(X_train_scaled, y_train_log)
-    print("Best alpha:", ridge.alpha_)
 
     y_pred = np.expm1(ridge.predict(X_valid_scaled))
 

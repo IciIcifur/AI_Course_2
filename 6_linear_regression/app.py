@@ -6,7 +6,7 @@ import joblib
 import numpy as np
 
 DEFAULT_MODEL_PATH = (
-        Path(__file__).resolve().parents[1] / "resources" / "salary_ridge_model.joblib"
+        Path(__file__).resolve().parents[1] / "resources" / "salary_model.joblib"
 )
 
 
@@ -46,9 +46,12 @@ def main() -> None:
     model = artifact["model"]
 
     X_scaled = scaler.transform(X)
-    predictions = model.predict(X_scaled)
 
-    salaries: List[float] = [float(v) for v in predictions.tolist()]
+    y_pred_log = model.predict(X_scaled)
+
+    y_pred = np.expm1(y_pred_log)
+
+    salaries: List[float] = [float(v) for v in y_pred.tolist()]
     for salary in salaries:
         print(salary)
 
