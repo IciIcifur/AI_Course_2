@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
         "--y-path",
         type=str,
         default="../data/input/y_data.npy",
-        help="Path to y_data.npy (target salaries).",
+        help="Path to y_data.npy (target salaries in RUB).",
     )
     parser.add_argument(
         "--output-path",
@@ -66,6 +66,12 @@ def main() -> None:
 
     X = np.load(x_path)
     y = np.load(y_path).astype(float)
+
+    data = np.concatenate([X, y.reshape(-1, 1)], axis=1)
+    data_unique = np.unique(data, axis=0)
+    X = data_unique[:, :-1]
+    y = data_unique[:, -1]
+
     if y.ndim > 1:
         y = y.ravel()
 
