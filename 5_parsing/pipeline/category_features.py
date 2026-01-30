@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import pandas as pd
 
 from .base import Handler
@@ -6,9 +8,7 @@ from .base import Handler
 class CategoryHandler(Handler):
     """Extract categorical profile and location features from raw HH.ru data."""
 
-    def _parse_city_mobility(
-            self, series: pd.Series
-    ) -> tuple[pd.Series, pd.Series, pd.Series]:
+    def _parse_city_mobility(self, series: pd.Series) -> tuple[pd.Series, pd.Series, pd.Series]:
         """Parse city, relocation flag and business trips level from 'Город' column.
 
         :param series: source column with raw city and mobility information
@@ -16,7 +16,7 @@ class CategoryHandler(Handler):
         :return: tuple of (city, relocation_flag, business_trips) series
         :rtype: tuple[pd.Series, pd.Series, pd.Series]
         """
-        s = series.astype(str)
+        s = series.fillna("").astype(str)
 
         cities: list[str] = []
         reloc_flags: list[int] = []
@@ -32,28 +32,26 @@ class CategoryHandler(Handler):
 
             reloc = False
             for part in parts_lower:
-                if "переезд" in part:
-                    if "не готов" in part or "не готова" in part:
-                        reloc = False
-                    elif "готов к переезду" in part or "готова к переезду" in part:
-                        reloc = True
+                if "переезд" not in part:
+                    continue
+                if "не готов" in part or "не готова" in part:
+                    reloc = False
+                elif "готов к переезду" in part or "готова к переезду" in part:
+                    reloc = True
             reloc_flags.append(int(reloc))
 
             level = "unknown"
             found_trips = False
-
             for part in parts_lower:
                 if "командиров" not in part:
                     continue
 
                 found_trips = True
-
                 if "не готов" in part or "не готова" in part:
                     level = "none"
                     break
                 if "редк" in part:
                     level = "rare"
-                    continue
                 if "готов" in part or "готова" in part:
                     if level == "unknown":
                         level = "regular"
@@ -63,7 +61,7 @@ class CategoryHandler(Handler):
 
             trips_levels.append(level)
 
-        city_series = pd.Series(cities, index=series.index)
+        city_series = pd.Series(cities, index=series.index, dtype="string")
         reloc_series = pd.Series(reloc_flags, index=series.index, dtype="int64")
         trips_series = pd.Series(trips_levels, index=series.index, dtype="string")
 
@@ -78,6 +76,7 @@ class CategoryHandler(Handler):
         :rtype: str
         """
         t = token.strip().lower()
+
         if t in ("полный день", "full day"):
             return "fullday"
         if t in ("гибкий график", "flexible schedule"):
@@ -88,6 +87,7 @@ class CategoryHandler(Handler):
             return "shifts"
         if t in ("вахтовый метод", "rotation based work"):
             return "rotation"
+
         return "other"
 
     def _parse_schedule(self, series: pd.Series) -> pd.Series:
@@ -99,8 +99,8 @@ class CategoryHandler(Handler):
         :rtype: pd.Series
         """
         s = series.fillna("").astype(str)
-        normed_values: list[str] = []
 
+        normed_values: list[str] = []
         for value in s:
             parts = [p for p in value.split(",") if p.strip()]
             normed = [self._normalize_schedule_token(p) for p in parts]
@@ -117,9 +117,8 @@ class CategoryHandler(Handler):
         :return: series with parsed sex values
         :rtype: pd.Series
         """
-        s = series.astype(str)
-        sex = s.str.extract(r"^(Мужчина|Женщина)", expand=False)
-        return sex
+        s = series.fillna("").astype(str)
+        return s.str.extract(r"^(Мужчина|Женщина)", expand=False).astype("string")
 
     def process(self, context: dict) -> dict:
         """Add categorical profile and location features to the DataFrame.
@@ -137,13 +136,13 @@ class CategoryHandler(Handler):
         city, reloc, trips = self._parse_city_mobility(df["Город"])
         schedule_norm = self._parse_schedule(df["График"])
 
-        df = df.copy()
-        df["sex"] = sex
-        df["city"] = city
-        df["relocation"] = reloc
-        df["business_trips"] = trips
-        df["schedule"] = schedule_norm
+        df_out = df.copy()
+        df_out["sex"] = sex
+        df_out["city"] = city
+        df_out["relocation"] = reloc
+        df_out["business_trips"] = trips
+        df_out["schedule"] = schedule_norm
 
-        context["df"] = df
+        context["df"] = df_out
         print("Done")
         return context

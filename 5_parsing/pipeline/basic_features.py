@@ -1,7 +1,14 @@
+from __future__ import annotations
+
+import re
+from typing import Final
+
 import numpy as np
 import pandas as pd
 
 from .base import Handler
+
+_UNKNOWN_CURRENCY: Final[str] = "unknown"
 
 
 class BasicHandler(Handler):
@@ -15,23 +22,24 @@ class BasicHandler(Handler):
         :return: tuple of (sex, age) series
         :rtype: tuple[pd.Series, pd.Series]
         """
-        s = series.astype(str)
+        s = series.fillna("").astype(str)
 
         sex = s.str.extract(r"^(Мужчина|Женщина)", expand=False)
 
         mask_missing = sex.isna()
         if mask_missing.any():
             sex_en = s[mask_missing].str.extract(r"^(Male|Female)", expand=False)
-            sex_en_mapped = sex_en.map({"Male": "Мужчина", "Female": "Женщина"})
-            sex.loc[mask_missing] = sex_en_mapped
+            sex.loc[mask_missing] = sex_en.map({"Male": "Мужчина", "Female": "Женщина"})
 
         s_lower = s.str.lower()
 
         age_str = s_lower.str.extract(r"(\d+)\s*(?:год|года|лет)", expand=False)
-
         mask_age_missing = age_str.isna()
         if mask_age_missing.any():
-            age_str_en = s_lower[mask_age_missing].str.extract(r"(\d+)\s*(?:year|years)", expand=False)
+            age_str_en = s_lower[mask_age_missing].str.extract(
+                r"(\d+)\s*(?:year|years)",
+                expand=False,
+            )
             age_str.loc[mask_age_missing] = age_str_en
 
         age = pd.to_numeric(age_str, errors="coerce").astype("Int64")
@@ -46,23 +54,36 @@ class BasicHandler(Handler):
         :return: tuple of (salary, currency) series
         :rtype: tuple[pd.Series, pd.Series]
         """
-        s = series.astype(str).str.replace("\xa0", " ", regex=False)
+        s = series.fillna("").astype(str).str.replace("\xa0", " ", regex=False)
 
-        numeric_str = (s.str.replace(" ", "", regex=False).str.extract(r"(\d+)", expand=False))
+        numeric_str = (
+            s.str.replace(" ", "", regex=False).str.extract(r"(\d+)", expand=False)
+        )
         salary = pd.to_numeric(numeric_str, errors="coerce")
 
-        tail = (s.str.replace(" ", "", regex=False).str.extract(r"\d+(.*)", expand=False).fillna(
-            "").str.strip().str.lower())
+        tail = (
+            s.str.replace(" ", "", regex=False)
+            .str.extract(r"\d+(.*)", expand=False)
+            .fillna("")
+            .str.strip()
+            .str.lower()
+        )
 
         def extract_currency(text: str) -> str:
-            """Extract currency token from salary tail text."""
-            if not text:
-                return "unknown"
+            """Extract currency token from salary tail text.
 
-            import re
+            :param text: tail text after numeric salary
+            :type text: str
+            :return: normalized currency token
+            :rtype: str
+            """
+            if not text:
+                return _UNKNOWN_CURRENCY
+
             tokens = [t for t in re.split(r"[^0-9a-zA-Zа-яА-Я]+", text) if t]
             if not tokens:
-                return "unknown"
+                return _UNKNOWN_CURRENCY
+
             return tokens[-1]
 
         currency = tail.apply(extract_currency).astype("string")
@@ -77,16 +98,17 @@ class BasicHandler(Handler):
         :return: total experience in years, rounded to two decimals
         :rtype: pd.Series
         """
-        s = series.astype(str).str.split("\n").str[0]
+        s = series.fillna("").astype(str).str.split("\n").str[0]
 
         years = s.str.extract(r"(\d+)\s*(?:год|года|лет)", expand=False)
         months = s.str.extract(r"(\d+)\s*(?:месяц|месяца|месяцев)", expand=False)
 
-        years_num = pd.to_numeric(years, errors="coerce").fillna(0)
-        months_num = pd.to_numeric(months, errors="coerce").fillna(0)
+        years_num = pd.to_numeric(years, errors="coerce").fillna(0.0)
+        months_num = pd.to_numeric(months, errors="coerce").fillna(0.0)
 
         total_years = years_num + months_num / 12.0
         total_years = total_years.replace(0, np.nan)
+
         return total_years.round(2)
 
     def _parse_education_last_year(self, series: pd.Series) -> pd.Series:
@@ -97,13 +119,20 @@ class BasicHandler(Handler):
         :return: series with the most recent education year
         :rtype: pd.Series
         """
-        s = series.astype(str)
+        s = series.fillna("").astype(str)
         years = s.str.findall(r"\b(19\d{2}|20\d{2})\b")
 
-        def max_year(lst):
+        def max_year(lst: list[str]) -> float:
+            """Find max year from list of year strings.
+
+            :param lst: list of year strings
+            :type lst: list[str]
+            :return: max year or NaN
+            :rtype: float
+            """
             if not lst:
                 return np.nan
-            return max(int(y) for y in lst)
+            return float(max(int(y) for y in lst))
 
         return years.apply(max_year).astype("Int64")
 
@@ -115,7 +144,7 @@ class BasicHandler(Handler):
         :return: binary series indicating car ownership
         :rtype: pd.Series
         """
-        s = series.astype(str).str.lower()
+        s = series.fillna("").astype(str).str.lower()
         has_car = s.str.contains("имеется собственный автомобиль", na=False)
         return has_car.astype(int)
 
@@ -133,21 +162,19 @@ class BasicHandler(Handler):
 
         sex, age = self._parse_sex_age(df["Пол, возраст"])
         salary, currency = self._parse_salary_and_currency(df["ЗП"])
-        exp_years = self._parse_experience_years(
-            df["Опыт (двойное нажатие для полной версии)"]
-        )
+        exp_years = self._parse_experience_years(df["Опыт (двойное нажатие для полной версии)"])
         edu_last_year = self._parse_education_last_year(df["Образование и ВУЗ"])
         has_car = self._parse_has_car(df["Авто"])
 
-        df = df.copy()
-        df["age"] = age
-        df["salary"] = salary
-        df["currency"] = currency
-        df["experience_years"] = exp_years
-        df["education_last_year"] = edu_last_year
-        df["has_car"] = has_car
-        df["sex"] = sex
+        df_out = df.copy()
+        df_out["sex"] = sex
+        df_out["age"] = age
+        df_out["salary"] = salary
+        df_out["currency"] = currency
+        df_out["experience_years"] = exp_years
+        df_out["education_last_year"] = edu_last_year
+        df_out["has_car"] = has_car
 
-        context["df"] = df
+        context["df"] = df_out
         print("Done")
         return context

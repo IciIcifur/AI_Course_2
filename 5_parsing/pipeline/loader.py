@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from pathlib import Path
+
 import pandas as pd
 
 from .base import Handler
@@ -26,9 +30,14 @@ class CSVLoader(Handler):
         :rtype: dict
         """
         print("\nLOADING DATA...")
-        df = pd.read_csv(self.path)
 
-        for col in ["Unnamed: 0", "Unnamed: 0.1"]:
+        csv_path = Path(self.path)
+        if not csv_path.is_file():
+            raise FileNotFoundError(f"CSV file not found: {csv_path}")
+
+        df = pd.read_csv(csv_path)
+
+        for col in ("Unnamed: 0", "Unnamed: 0.1"):
             if col in df.columns:
                 df = df.drop(columns=[col])
 

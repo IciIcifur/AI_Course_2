@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import numpy as np
 import pandas as pd
 
 from .base import Handler
@@ -27,19 +30,22 @@ class SplitTargetHandler(Handler):
         """
         print("\nSPLITTING X AND Y...")
 
-        df: pd.DataFrame = context["df"]
+        df: pd.DataFrame = context["df"].copy()
 
-        for col in df.columns:
-            if col == self.target_column:
-                continue
-            if not pd.api.types.is_numeric_dtype(df[col]):
-                df[col] = pd.to_numeric(df[col], errors="coerce")
+        if self.target_column not in df.columns:
+            raise KeyError(f"Target column not found: {self.target_column}")
 
         y = df[self.target_column].to_numpy()
-        X = df.drop(columns=[self.target_column]).to_numpy(dtype="float64")
+        x_df = df.drop(columns=[self.target_column])
 
+        for col in x_df.columns:
+            if not pd.api.types.is_numeric_dtype(x_df[col]):
+                x_df[col] = pd.to_numeric(x_df[col], errors="coerce")
+
+        x = x_df.to_numpy(dtype=np.float64)
+
+        context["X"] = x
         context["y"] = y
-        context["X"] = X
 
         print("Done")
         return context

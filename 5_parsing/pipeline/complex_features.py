@@ -8,6 +8,13 @@ class ComplexHandler(Handler):
     """Extract education level features from the 'Образование и ВУЗ' column."""
 
     def __init__(self, next_handler=None, keep_raw: bool = True):
+        """Create handler.
+
+        :param next_handler: next handler in the pipeline
+        :type next_handler: Handler or None
+        :param keep_raw: whether to keep raw education text in 'raw_education'
+        :type keep_raw: bool
+        """
         super().__init__(next_handler)
         self.keep_raw = keep_raw
 
@@ -16,27 +23,24 @@ class ComplexHandler(Handler):
 
         :param series: source column with raw education description
         :type series: pd.Series
-        :return: dataframe with normalized education level codes and has_master boolean column
-        :rtype: pd.Dataframe
+        :return: dataframe with normalized education level codes and has_master column
+        :rtype: pd.DataFrame
         """
-        s = series.astype(str).str.lower()
+        s = series.fillna("").astype(str).str.lower()
 
         has_master = s.str.contains("магистр", na=False).astype(int)
 
         conditions = [
-            # высшее
+            # higher education
             s.str.contains("высшее", na=False)
             | s.str.contains("бакалавр", na=False)
             | s.str.contains("магистр", na=False),
-
-            # среднее профессиональное
+            # vocational education
             s.str.contains("среднее профессиональное", na=False)
             | s.str.contains("среднее специальное", na=False),
-
-            # среднее общее
+            # school
             s.str.contains("среднее общее", na=False),
         ]
-
         choices = ["higher", "vocational", "school"]
 
         education_level = pd.Series(
@@ -63,8 +67,7 @@ class ComplexHandler(Handler):
         """
         print("\nCOMPLEX FEATURES...")
 
-        df: pd.DataFrame = context["df"]
-        df = df.copy()
+        df: pd.DataFrame = context["df"].copy()
 
         edu_features = self._parse_education_level(df["Образование и ВУЗ"])
         df = pd.concat([df, edu_features], axis=1)

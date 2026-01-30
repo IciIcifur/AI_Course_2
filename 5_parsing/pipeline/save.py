@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 import numpy as np
@@ -28,6 +30,8 @@ class NumpySaver(Handler):
         :rtype: dict
         """
         print("\nSAVING RESULTS...")
+
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
         x_path = self.output_dir / "x_data.npy"
         y_path = self.output_dir / "y_data.npy"
