@@ -61,6 +61,13 @@ class EncodingHandler(Handler):
                 df[column] = series.map(mapping).astype("int64")
         return df
 
+    def _gradational_label_encoding(self, df: pd.DataFrame, map_per_column: dict):
+        """Label-encode given column with given mappings in int64"""
+        for column in map_per_column.keys():
+            if column in df.columns:
+                df[column] = df[column].map(map_per_column[column]).astype("int64")
+        return df
+
     def _encode_schedule(self, df: pd.DataFrame) -> pd.DataFrame:
         """Convert multi-valued schedule column to multi-hot features."""
         if "schedule" in df.columns:
@@ -72,18 +79,6 @@ class EncodingHandler(Handler):
                 col_name = f"schedule__{t}"
                 df[col_name] = parts.apply(lambda row, tok=t: int(tok in row))
             df = df.drop(columns=["schedule"])
-        return df
-
-    def _one_hot_categoricals(self, df: pd.DataFrame) -> pd.DataFrame:
-        """One-hot encode selected categorical columns."""
-        cat_cols: list[str] = []
-        for col in ["business_trips", "education_level"]:
-            if col in df.columns and df[col].dtype.name in ("object", "string"):
-                cat_cols.append(col)
-
-        if cat_cols:
-            df = pd.get_dummies(df, columns=cat_cols, drop_first=False, dummy_na=False)
-
         return df
 
     def _drop_raw_text_columns(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -155,14 +150,21 @@ class EncodingHandler(Handler):
         """
         print("\nENCODING COLUMNS...")
 
+        gradational_columns_map = {
+            'education_level':  {'school': 0,  'vocational': 1,  'higher': 2},
+            'business_trips': {'none': 0,  'rare': 1, 'regular': 2}
+        }
+
         df: pd.DataFrame = context["df"].copy()
 
         df = self._drop_unknown_categories(df)
         df = self._encode_binary_flags(df)
         df = self._fix_numeric_types(df)
+
+        df = self._gradational_label_encoding(df, gradational_columns_map)
         df = self._label_encode_categoricals(df)
+
         df = self._encode_schedule(df)
-        df = self._one_hot_categoricals(df)
         df = self._drop_raw_text_columns(df)
         df = self._impute_missing_numeric(df)
         df = self._drop_non_numeric_except_target(df)

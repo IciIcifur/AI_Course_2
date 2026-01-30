@@ -8,47 +8,50 @@ class ComplexHandler(Handler):
     """Extract education level features from the 'Образование и ВУЗ' column."""
 
     def __init__(self, next_handler=None, keep_raw: bool = True):
-        """Initialize handler with optional raw education preservation.
-
-        :param next_handler: next handler to be executed in the pipeline
-        :type next_handler: Handler or None
-        :param keep_raw: whether to keep raw education text in a separate column
-        :type keep_raw: bool
-        """
         super().__init__(next_handler)
         self.keep_raw = keep_raw
 
-    def _parse_education_level(self, series: pd.Series) -> pd.Series:
+    def _parse_education_level(self, series: pd.Series) -> pd.DataFrame:
         """Parse normalized education level from the 'Образование и ВУЗ' column.
 
         :param series: source column with raw education description
         :type series: pd.Series
-        :return: series with normalized education level codes
-        :rtype: pd.Series
+        :return: dataframe with normalized education level codes and has_master boolean column
+        :rtype: pd.Dataframe
         """
         s = series.astype(str).str.lower()
 
+        has_master = s.str.contains("магистр", na=False).astype(int)
+
         conditions = [
-            s.str.contains("магистр", na=False),
-            s.str.contains("бакалавр", na=False),
-            s.str.contains("высшее", na=False),
+            # высшее
+            s.str.contains("высшее", na=False)
+            | s.str.contains("бакалавр", na=False)
+            | s.str.contains("магистр", na=False),
+
+            # среднее профессиональное
             s.str.contains("среднее профессиональное", na=False)
             | s.str.contains("среднее специальное", na=False),
+
+            # среднее общее
             s.str.contains("среднее общее", na=False),
         ]
-        choices = [
-            "master",
-            "bachelor",
-            "higher",
-            "vocational",
-            "school",
-        ]
-        level = pd.Series(
-            np.select(conditions, choices, default="unknown"),
+
+        choices = ["higher", "vocational", "school"]
+
+        education_level = pd.Series(
+            np.select(conditions, choices, default="school"),
             index=series.index,
             dtype="string",
         )
-        return level
+
+        return pd.DataFrame(
+            {
+                "education_level": education_level,
+                "has_master": has_master,
+            },
+            index=series.index,
+        )
 
     def process(self, context: dict) -> dict:
         """Add education level features to the DataFrame.
@@ -61,10 +64,10 @@ class ComplexHandler(Handler):
         print("\nCOMPLEX FEATURES...")
 
         df: pd.DataFrame = context["df"]
-
-        edu_level = self._parse_education_level(df["Образование и ВУЗ"])
         df = df.copy()
-        df["education_level"] = edu_level
+
+        edu_features = self._parse_education_level(df["Образование и ВУЗ"])
+        df = pd.concat([df, edu_features], axis=1)
 
         if self.keep_raw:
             df["raw_education"] = df["Образование и ВУЗ"]

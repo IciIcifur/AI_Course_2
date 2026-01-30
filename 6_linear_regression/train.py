@@ -29,7 +29,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-path",
         type=str,
-        default="../resources/salary_ridge_model.joblib",
+        default="../resources/salary_model.joblib",
         help="Where to save the trained model.",
     )
     parser.add_argument(
@@ -41,7 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--alpha",
         type=float,
-        default=1.0,
+        default=1,
         help="Ridge regularization strength (alpha).",
     )
     parser.add_argument(
@@ -129,22 +129,23 @@ def main() -> None:
     X_train_poly = poly.fit_transform(X_train_scaled)
     X_valid_poly = poly.transform(X_valid_scaled)
 
-    model = Ridge(alpha=args.alpha, random_state=args.random_state)
-    model.fit(X_train_poly, y_train)
+    y_train_log = np.log1p(y_train)
 
-    y_pred = model.predict(X_valid_poly)
+    ridge = Ridge(alpha=args.alpha, random_state=args.random_state)
+    ridge.fit(X_train_poly, y_train_log)
+
+    y_pred = np.expm1(ridge.predict(X_valid_poly))
 
     print_metrics('Ridge', y_valid, y_pred)
 
-    # Сохраняем И скейлер, И модель, чтобы в app.py применять те же преобразования
     output_path.parent.mkdir(parents=True, exist_ok=True)
     artifact = {
         "scaler": scaler,
-        "model": model,
+        "model": ridge,
     }
     joblib.dump(artifact, output_path)
 
-    print(f"Trained Ridge model saved to {output_path}")
+    print(f"Trained model saved to {output_path}")
 
 
 if __name__ == "__main__":
