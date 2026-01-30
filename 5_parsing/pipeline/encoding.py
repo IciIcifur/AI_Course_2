@@ -58,8 +58,6 @@ class EncodingHandler(Handler):
                 series = df[column].fillna("").astype(str)
                 unique = sorted(series.unique())
                 mapping = {value: idx for idx, value in enumerate(unique)}
-                if not (column in ['position', 'last_position']):
-                    print(mapping)
                 df[column] = series.map(mapping).astype("int64")
         return df
 
@@ -97,6 +95,25 @@ class EncodingHandler(Handler):
         drop_cols.extend(["last_work", "Пол, возраст", "ЗП", "Город", "Опыт (двойное нажатие для полной версии)",
                           "Образование и ВУЗ", ])
         df = df.drop(columns=drop_cols, errors="ignore")
+        return df
+
+    def _drop_extreme_salaries(self, df: pd.DataFrame, min_salary: float = 5_000.0,
+                               max_salary: float = 1_000_000.0, ) -> pd.DataFrame:
+        """Drops rows with salary outside [min_salary, max_salary] range."""
+        if "salary" not in df.columns:
+            return df
+
+        before = len(df)
+        mask = (df["salary"] >= min_salary) & (df["salary"] <= max_salary)
+        df = df[mask]
+
+        after = len(df)
+        dropped = before - after
+        if dropped > 0:
+            print(
+                f"Dropped {dropped} rows with salary outside [{min_salary}, {max_salary}] RUB."
+            )
+
         return df
 
     def _impute_missing_numeric(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -149,6 +166,7 @@ class EncodingHandler(Handler):
         df = self._drop_raw_text_columns(df)
         df = self._impute_missing_numeric(df)
         df = self._drop_non_numeric_except_target(df)
+        df = self._drop_extreme_salaries(df)
         df = self._cast_bools_to_int(df)
 
         context["df"] = df
