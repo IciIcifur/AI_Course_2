@@ -1,17 +1,23 @@
-"""Train PoC classifier for developer level (junior/middle/senior) from HH.ru resumes.
+"""Train a PoC classifier for developer level (junior/middle/senior) from HH.ru resumes.
 
-PoC notes:
-- IT developers are selected by heuristic rules (see labelling.py).
-- Target y (dev_level) is formed heuristically from title markers and/or experience.
-- Model quality is evaluated on a hold-out split with classification_report.
+The pipeline:
+1) Load the prepared dataset (CSV).
+2) Filter IT developer resumes using heuristic rules based on position titles.
+3) Build the target variable ``dev_level`` using title markers and experience fallback.
+4) Plot class balance.
+5) Train a baseline model (most frequent class) and a LinearSVC classifier.
+6) Print a classification report and balanced accuracy on a hold-out split.
 
-This script keeps a single best-performing model (LinearSVC) for simplicity.
+Notes:
+- Labels are heuristic, so metrics reflect agreement with the heuristic "ground truth".
+- The goal is a proof of concept (PoC), not a production-grade model.
 """
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import Final
 
 import pandas as pd
 from sklearn.metrics import balanced_accuracy_score, classification_report
@@ -19,114 +25,170 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.svm import LinearSVC
 
-from features import DEFAULT_FEATURES, build_xy, make_preprocessor
-from labelling import add_level_label, filter_it
+from features import DEFAULT_FEATURES, build_features_and_target, make_preprocessor
+from labelling import add_level_label, filter_it_developers
 from plots import plot_class_balance
+
+DEFAULT_INPUT_PATH: Final[Path] = Path("data/processed/hh_prepared_raw.csv")
+DEFAULT_OUTPUT_DIR: Final[Path] = Path("resources")
+DEFAULT_TEST_SIZE: Final[float] = 0.2
+DEFAULT_RANDOM_STATE: Final[int] = 42
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse CLI args."""
+    """Parse command-line arguments.
+
+    Returns:
+        argparse.Namespace: Parsed CLI arguments.
+    """
     parser = argparse.ArgumentParser(
         description="Train PoC classifier for junior/middle/senior developer level."
     )
     parser.add_argument(
         "--input-path",
         type=Path,
-        default=Path("data/processed/hh_prepared_raw.csv"),
+        default=DEFAULT_INPUT_PATH,
         help="Path to prepared raw CSV (from 5_parsing).",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("resources"),
+        default=DEFAULT_OUTPUT_DIR,
         help="Directory to save plots.",
     )
     parser.add_argument(
         "--test-size",
         type=float,
-        default=0.2,
+        default=DEFAULT_TEST_SIZE,
         help="Fraction of data to use as validation set.",
     )
     parser.add_argument(
         "--random-state",
         type=int,
-        default=42,
-        help="Random seed.",
+        default=DEFAULT_RANDOM_STATE,
+        help="Random seed used for train/validation split.",
     )
     return parser.parse_args()
 
 
-def require_file(path: Path, description: str) -> None:
-    """Raise FileNotFoundError if `path` does not exist."""
-    if not path.is_file():
-        raise FileNotFoundError(f"{description} not found: {path}")
+def ensure_file_exists(file_path: Path, description: str) -> None:
+    """Ensure that a file exists.
+
+    Args:
+        file_path (Path): Path to check.
+        description (str): Human-readable description for error messages.
+
+    Raises:
+        FileNotFoundError: If file does not exist.
+    """
+    if not file_path.is_file():
+        raise FileNotFoundError(f"{description} not found: {file_path}")
+
+
+def print_filtering_summary(
+        total_rows: int,
+        it_rows: int,
+        labeled_rows: int,
+) -> None:
+    """Print dataset sizes after each processing step.
+
+    Args:
+        total_rows (int): Total number of rows in the source dataset.
+        it_rows (int): Rows after IT developer filtering.
+        labeled_rows (int): Rows after target labeling.
+    """
+    dropped_after_it = total_rows - it_rows
+    dropped_after_labeling = it_rows - labeled_rows
+
+    dropped_after_it_pct = dropped_after_it / max(total_rows, 1) * 100.0
+    dropped_after_labeling_pct = dropped_after_labeling / max(it_rows, 1) * 100.0
+
+    print("=== Filtering summary ===")
+    print(f"Total rows in prepared_raw: {total_rows}")
+    print(
+        "After IT developer filter:  "
+        f"{it_rows} (dropped {dropped_after_it}, {dropped_after_it_pct:.1f}%)"
+    )
+    print(
+        "After level labeling:       "
+        f"{labeled_rows} (dropped {dropped_after_labeling}, {dropped_after_labeling_pct:.1f}%)"
+    )
+    print()
 
 
 def main() -> None:
-    """Entrypoint."""
+    """Run training and evaluation."""
     args = parse_args()
-    require_file(args.input_path, "Prepared raw CSV")
+    ensure_file_exists(args.input_path, "Prepared raw CSV")
 
-    df = pd.read_csv(args.input_path)
-    n0 = len(df)
+    source_dataframe = pd.read_csv(args.input_path)
+    total_rows = len(source_dataframe)
 
-    df_it = filter_it(df)
-    n1 = len(df_it)
+    it_developers_dataframe = filter_it_developers(source_dataframe)
+    it_rows = len(it_developers_dataframe)
 
-    df_labeled = add_level_label(df_it)
-    n2 = len(df_labeled)
+    labeled_dataframe = add_level_label(it_developers_dataframe)
+    labeled_rows = len(labeled_dataframe)
 
-    print("=== Filtering summary ===")
-    print(f"Total rows in prepared_raw: {n0}")
-    print(f"After IT developer filter:  {n1} (dropped {n0 - n1}, {(n0 - n1) / max(n0, 1) * 100:.1f}%)")
-    print(f"After level labeling:       {n2} (dropped {n1 - n2}, {(n1 - n2) / max(n1, 1) * 100:.1f}%)")
-    print()
-
-    plot_class_balance(
-        df_labeled["dev_level"],
-        output_path=args.output_dir / "class_balance.png",
-        title="Class balance: junior/middle/senior in IT",
+    print_filtering_summary(
+        total_rows=total_rows,
+        it_rows=it_rows,
+        labeled_rows=labeled_rows,
     )
 
-    X, y = build_xy(df_labeled, DEFAULT_FEATURES)
+    plot_class_balance(
+        y=labeled_dataframe["dev_level"],
+        output_path=args.output_dir / "class_balance.png",
+        title="Class balance: junior/middle/senior (IT developers, strict filter)",
+    )
+
+    features, target = build_features_and_target(labeled_dataframe, DEFAULT_FEATURES)
 
     X_train, X_valid, y_train, y_valid = train_test_split(
-        X,
-        y,
+        features,
+        target,
         test_size=args.test_size,
         random_state=args.random_state,
-        stratify=y,
+        stratify=target,
         shuffle=True,
     )
 
     print("=== Data summary ===")
     print(f"Input file: {args.input_path}")
-    print(f"Labeled IT developers: {len(df_labeled)}")
+    print(f"Labeled IT developers: {labeled_rows}")
+    print("Class distribution:")
+    print(target.value_counts())
     print()
 
-    print("Class distribution:")
-    print(y.value_counts())
-    print()
+    most_common_class = y_train.value_counts().idxmax()
+    baseline_predictions = pd.Series(
+        [most_common_class] * len(y_valid),
+        index=y_valid.index,
+    )
+
+    print("=== Baseline (predict most frequent class) ===")
+    print(f"Most common class in train: {most_common_class}")
+    print(f"Balanced accuracy: {balanced_accuracy_score(y_valid, baseline_predictions):.4f}")
+    print(classification_report(y_valid, baseline_predictions, digits=4, zero_division=0))
 
     preprocessor = make_preprocessor(DEFAULT_FEATURES)
-
-    model = LinearSVC(
+    classifier = LinearSVC(
         class_weight="balanced",
         random_state=args.random_state,
     )
-    clf = Pipeline(
+    model_pipeline = Pipeline(
         steps=[
             ("preprocess", preprocessor),
-            ("model", model),
+            ("model", classifier),
         ]
     )
 
-    clf.fit(X_train, y_train)
-    y_pred = clf.predict(X_valid)
+    model_pipeline.fit(X_train, y_train)
+    predictions = model_pipeline.predict(X_valid)
 
     print("\n=== Model: LinearSVC ===")
-    print(f"Balanced accuracy: {balanced_accuracy_score(y_valid, y_pred):.4f}")
-    print(classification_report(y_valid, y_pred, digits=4, zero_division=0))
+    print(f"Balanced accuracy: {balanced_accuracy_score(y_valid, predictions):.4f}")
+    print(classification_report(y_valid, predictions, digits=4, zero_division=0))
 
     print(f"\nSaved class balance plot to: {args.output_dir / 'class_balance.png'}")
 
