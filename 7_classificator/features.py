@@ -18,6 +18,7 @@ DEFAULT_FEATURES = FeatureSpec(
         "age",
         "salary",
         "experience_years",
+        "education_last_year",
         "has_car",
         "relocation",
         "has_master",
