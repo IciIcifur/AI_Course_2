@@ -9,6 +9,7 @@ from pipeline.encoding import EncodingHandler
 from pipeline.loader import CSVLoader
 from pipeline.normalization import NormalizeHandler
 from pipeline.save import NumpySaver
+from pipeline.save_csv import DataFrameSaver
 from pipeline.split import SplitTargetHandler
 
 
@@ -30,13 +31,24 @@ def build_pipeline(csv_path: Path, target_column: str = "salary") -> CSVLoader:
     profile_loc = CategoryHandler()
     education = ComplexHandler()
     positions = NormalizeHandler()
+    save_prepared_raw = DataFrameSaver(output_path=Path("data/processed/hh_prepared_raw.csv"), index=False)
     encoder = EncodingHandler()
+    save_prepared_encoded = DataFrameSaver(output_path=Path("data/processed/hh_prepared_encoded.csv"), index=False)
     splitter = SplitTargetHandler(target_column=target_column)
     saver = NumpySaver(output_dir=csv_path.parent)
 
-    (loader.set_next(cleaner).set_next(basic)
-     .set_next(profile_loc).set_next(education).set_next(positions)
-     .set_next(encoder).set_next(splitter).set_next(saver))
+    (
+        loader.set_next(cleaner)
+        .set_next(basic)
+        .set_next(profile_loc)
+        .set_next(education)
+        .set_next(positions)
+        .set_next(save_prepared_raw)
+        .set_next(encoder)
+        .set_next(save_prepared_encoded)
+        .set_next(splitter)
+        .set_next(saver)
+    )
 
     return loader
 
