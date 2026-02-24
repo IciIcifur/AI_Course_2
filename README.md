@@ -24,7 +24,7 @@ IT‑разработчика с разумным качеством.
 Из корня репозитория:
 
 ```bash
-python 7_classificator/train.py
+python source/train.py
 ```
 
 Результаты:
@@ -86,7 +86,7 @@ middle    3481
 junior    1676
 ```
 
-![Class Balance](../resources/class_balance.png)
+![Class Balance](resources\class_balance.png)
 
 ### Итоговая модель (LinearSVC)
 
