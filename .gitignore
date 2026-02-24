@@ -1,4 +1,49 @@
-/.venv
-/network_traffic_analysis.egg-info/
-/data
-/.idea
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Distribution / packaging
+build/
+dist/
+pip-wheel-metadata/
+*.egg-info/
+*.egg
+network_traffic_analysis.egg-info/
+
+# Unit test / coverage reports
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# --- Data / artifacts ---
+data/
+*.npy
+*.npz
+
+# --- IDEs / editors ---
+.idea/            # PyCharm/IntelliJ (у тебя уже было)
+.vscode/          # VS Code
+*.code-workspace
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- Logs ---
+*.log
