@@ -4,7 +4,7 @@
 Построен на паттерне «цепочка ответственности» и запускается командой:
 
 ```bash
-python 5_parsing/app.py path/to/hh.csv
+python source/app.py path/to/hh.csv
 ```
 
 Рядом с исходным `hh.csv` создаются файлы:
