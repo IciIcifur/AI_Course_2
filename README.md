@@ -4,7 +4,7 @@
 Запуск предсказаний на модели с загрузкой сохраненных ранее весов:
 
 ```bash
-python 6_linear_regression/app.py path/to/x_data.npy --model-path resources/salary_model.joblib
+python source/app.py path/to/x_data.npy --model-path resources/salary_model.joblib
 ```
 
 В директории resources после обучения модели создается файл `salary_model.joblib` с сохраненными весами.
