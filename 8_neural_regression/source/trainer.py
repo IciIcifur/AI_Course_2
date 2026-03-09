@@ -40,7 +40,7 @@ def fit(
         epochs: int,
         batch_size: int,
         lr: float,
-        patience: int = 20,
+        patience: int = 30,
 ) -> StandardScaler:
     """Обучает модель на тренировочных данных.
 
