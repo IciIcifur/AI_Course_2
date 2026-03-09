@@ -40,6 +40,7 @@ def fit(
         epochs: int,
         batch_size: int,
         lr: float,
+        patience: int = 20,
 ) -> StandardScaler:
     """Обучает модель на тренировочных данных.
 
@@ -63,6 +64,9 @@ def fit(
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = nn.MSELoss()
 
+    best_loss = float("inf")
+    epochs_without_improvement = 0
+
     model.train()
     for epoch in range(epochs):
         total_loss = 0.0
@@ -72,9 +76,20 @@ def fit(
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
-        if (epoch + 1) % 10 == 0:
-            print(f"Эпоха {epoch + 1}/{epochs} — loss: {total_loss / len(loader):.4f}")
 
+        avg_loss = total_loss / len(loader)
+        if (epoch + 1) % 10 == 0:
+            print(f"Эпоха {epoch + 1}/{epochs} — loss: {avg_loss:.4f}")
+
+        if avg_loss < best_loss - 1e-4:
+            best_loss = avg_loss
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
+
+        if epochs_without_improvement >= patience:
+            print(f"Ранний выход на эпохе {epoch + 1}")
+            break
     return scaler
 
 
